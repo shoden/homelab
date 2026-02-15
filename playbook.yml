@@ -114,19 +114,25 @@
       delay: 10
       ignore_errors: yes
 
-    - name: Run maintenance repair to add missing MIME types
+    - name: Add missing MIME types to Nextcloud
       command: /usr/local/bin/nextcloud-occ maintenance:repair --include-expensive
       register: occ_output
       changed_when: false
       failed_when: false
 
-    - name: Add missing database indices
+    - name: Add Nextcloud missing database indices
       command: /usr/local/bin/nextcloud-occ db:add-missing-indices
       register: occ_indices_output
       changed_when: false
       failed_when: false
 
-    - name: Configure HSTS header
+    - name: Add Nextcloud maintenance window
+      command: /usr/local/bin/nextcloud-occ config:system:set maintenance_window_start --type=integer --value=1
+      register: occ_output
+      changed_when: false
+      failed_when: false
+
+    - name: Configure Nextcloud HSTS header
       command: /usr/local/bin/nextcloud-occ config:system:set overwrite.cli.url --value="https://{{ nextcloud_domain }}"
       changed_when: false
       failed_when: false
