@@ -1,0 +1,87 @@
+---
+- name: Deploy Nextcloud with MariaDB and Redis using Docker Compose
+  hosts: nextcloud
+  become: yes
+  vars:
+    nextcloud_base_dir: /opt/nextcloud
+    nextcloud_data_dir: "{{ nextcloud_base_dir }}/data"
+    mariadb_data_dir: "{{ nextcloud_base_dir }}/mariadb"
+    redis_data_dir: "{{ nextcloud_base_dir }}/redis"
+    nextcloud_port: 8080
+    
+    # Credentials (customize these)
+    mysql_root_password: "{{ lookup('env', 'MYSQL_ROOT_PASSWORD') | default('changeme_root_password', true) }}"
+    mysql_database: nextcloud
+    mysql_user: nextcloud
+    mysql_password: "{{ lookup('env', 'MYSQL_PASSWORD') | default('changeme_mysql_password', true) }}"
+    nextcloud_admin_user: admin
+    nextcloud_admin_password: "{{ lookup('env', 'NEXTCLOUD_ADMIN_PASSWORD') | default('changeme_admin_password', true) }}"
+
+  tasks:
+    - name: Install Docker and Docker Compose
+      apt:
+        name:
+          - docker.io
+          - docker-compose
+        state: present
+        update_cache: yes
+
+    - name: Ensure Docker service is running
+      systemd:
+        name: docker
+        state: started
+        enabled: yes
+
+    - name: Add ansible user to docker group
+      user:
+        name: "{{ ansible_user }}"
+        groups: docker
+        append: yes
+
+    - name: Create volume directories
+      file:
+        path: "{{ item }}"
+        state: directory
+        mode: '0755'
+      loop:
+        - "{{ nextcloud_base_dir }}"
+        - "{{ nextcloud_data_dir }}"
+        - "{{ mariadb_data_dir }}"
+        - "{{ redis_data_dir }}"
+
+    - name: Deploy .env file
+      template:
+        src: .env.j2
+        dest: "{{ nextcloud_base_dir }}/.env"
+        mode: '0600'
+
+    - name: Deploy docker-compose.yml
+      template:
+        src: docker-compose.yml.j2
+        dest: "{{ nextcloud_base_dir }}/docker-compose.yml"
+        mode: '0644'
+
+    - name: Start Docker Compose stack
+      command:
+        cmd: docker-compose up -d
+        chdir: "{{ nextcloud_base_dir }}"
+      register: docker_compose_output
+
+    - name: Wait for Nextcloud to be ready
+      uri:
+        url: "http://{{ ansible_host }}:{{ nextcloud_port }}"
+        status_code: 200
+        timeout: 5
+      register: result
+      until: result.status == 200
+      retries: 30
+      delay: 10
+      ignore_errors: yes
+
+    - name: Display deployment information
+      debug:
+        msg:
+          - "Nextcloud has been deployed successfully!"
+          - "Access Nextcloud at: http://{{ ansible_host }}:{{ nextcloud_port }}"
+          - "Admin username: {{ nextcloud_admin_user }}"
+          - "Please check the .env file for credentials at {{ nextcloud_base_dir }}/.env"
