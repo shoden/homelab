@@ -7,6 +7,7 @@
     nextcloud_data_dir: "{{ nextcloud_base_dir }}/app"
     mariadb_data_dir: "{{ nextcloud_base_dir }}/db"
     redis_data_dir: "{{ nextcloud_base_dir }}/redis"
+    nextcloud_domain: myhost.local
     nextcloud_port: 8080
     
     # Credentials (customize these)
@@ -74,6 +75,12 @@
         dest: "{{ nextcloud_base_dir }}/docker-compose.yml"
         mode: '0644'
 
+    - name: Deploy Caddyfile
+      template:
+        src: Caddyfile.j2
+        dest: "{{ nextcloud_base_dir }}/Caddyfile"
+        mode: '0644'
+
     - name: Start Docker Compose stack
       command:
         cmd: docker-compose up -d
@@ -91,9 +98,10 @@
 
     - name: Wait for Nextcloud to be ready
       uri:
-        url: "http://{{ ansible_host }}:{{ nextcloud_port }}"
+        url: "https://{{ nextcloud_domain }}"
         status_code: 200
         timeout: 5
+        validate_certs: no
       register: result
       until: result.status == 200
       retries: 30
@@ -116,7 +124,7 @@
       debug:
         msg:
           - "Nextcloud has been deployed successfully!"
-          - "Access Nextcloud at: http://{{ ansible_host }}:{{ nextcloud_port }}"
+          - "Access Nextcloud at: https://{{ nextcloud_domain }}"
           - "Admin username: {{ nextcloud_admin_user }}"
           - "Please check the .env file for credentials at {{ nextcloud_base_dir }}/.env"
           - ""
