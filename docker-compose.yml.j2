@@ -62,8 +62,8 @@ services:
       - "443:443"
     volumes:
       - ${CADDY_DATA_DIR}/Caddyfile:/etc/caddy/Caddyfile
-      - ${CADDY_DATA_DIR}/caddy_data:/data
-      - ${CADDY_DATA_DIR}/caddy_config:/config
+      - ${CADDY_DATA_DIR}/data:/data
+      - ${CADDY_DATA_DIR}/config:/config
     depends_on:
       - nextcloud
     networks:
