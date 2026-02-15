@@ -4,7 +4,7 @@
   become: yes
   vars:
     nextcloud_base_dir: /opt/nextcloud
-    nextcloud_app_dir: "{{ nextcloud_base_dir }}/app"
+    nextcloud_data_dir: "{{ nextcloud_base_dir }}/app"
     mariadb_data_dir: "{{ nextcloud_base_dir }}/db"
     redis_data_dir: "{{ nextcloud_base_dir }}/redis"
     nextcloud_port: 8080
@@ -23,6 +23,8 @@
         name:
           - docker.io
           - docker-compose
+          - tree
+          - neovim
         state: present
         update_cache: yes
 
@@ -45,7 +47,7 @@
         mode: '0755'
       loop:
         - "{{ nextcloud_base_dir }}"
-        - "{{ nextcloud_app_dir }}"
+        - "{{ nextcloud_data_dir }}"
         - "{{ mariadb_data_dir }}"
         - "{{ redis_data_dir }}"
 
@@ -60,6 +62,12 @@
         src: docker-compose.yml.j2
         dest: "{{ nextcloud_base_dir }}/docker-compose.yml"
         mode: '0644'
+
+    - name: Stop existing Docker Compose stack
+      command:
+        cmd: docker-compose down
+        chdir: "{{ nextcloud_base_dir }}"
+      ignore_errors: yes
 
     - name: Start Docker Compose stack
       command:
