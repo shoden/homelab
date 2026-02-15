@@ -7,6 +7,7 @@
     nextcloud_data_dir: "{{ nextcloud_base_dir }}/app"
     mariadb_data_dir: "{{ nextcloud_base_dir }}/db"
     redis_data_dir: "{{ nextcloud_base_dir }}/redis"
+    caddy_data_dir: "{{ nextcloud_base_dir }}/caddy"
     nextcloud_domain: myhost.local
     nextcloud_port: 8080
     
@@ -62,6 +63,7 @@
         - "{{ nextcloud_data_dir }}"
         - "{{ mariadb_data_dir }}"
         - "{{ redis_data_dir }}"
+        - "{{ caddy_data_dir }}"
 
     - name: Deploy .env file
       template:
@@ -78,7 +80,7 @@
     - name: Deploy Caddyfile
       template:
         src: Caddyfile.j2
-        dest: "{{ nextcloud_base_dir }}/Caddyfile"
+        dest: "{{ caddy_data_dir }}/Caddyfile"
         mode: '0644'
 
     - name: Deploy Apache HSTS configuration
