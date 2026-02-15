@@ -32,6 +32,7 @@ services:
     restart: unless-stopped
     volumes:
       - ${NEXTCLOUD_DATA_DIR}:/var/www/html
+      - ${NEXTCLOUD_BASE_DIR}/apache-hsts.conf:/etc/apache2/conf-available/hsts.conf
     environment:
       - MYSQL_HOST=mariadb
       - MYSQL_DATABASE=${MYSQL_DATABASE}
@@ -45,6 +46,7 @@ services:
       - OVERWRITEPROTOCOL=https
       - OVERWRITEHOST=${NEXTCLOUD_TRUSTED_DOMAINS}
       - TRUSTED_PROXIES=172.16.0.0/12
+      - APACHE_DISABLE_REWRITE_IP=1
     depends_on:
       - mariadb
       - redis

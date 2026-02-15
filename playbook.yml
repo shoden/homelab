@@ -81,6 +81,12 @@
         dest: "{{ nextcloud_base_dir }}/Caddyfile"
         mode: '0644'
 
+    - name: Deploy Apache HSTS configuration
+      template:
+        src: apache-hsts.conf.j2
+        dest: "{{ nextcloud_base_dir }}/apache-hsts.conf"
+        mode: '0644'
+
     - name: Start Docker Compose stack
       command:
         cmd: docker-compose up -d
@@ -117,6 +123,21 @@
     - name: Add missing database indices
       command: /usr/local/bin/nextcloud-occ db:add-missing-indices
       register: occ_indices_output
+      changed_when: false
+      failed_when: false
+
+    - name: Configure HSTS header
+      command: /usr/local/bin/nextcloud-occ config:system:set overwrite.cli.url --value="https://{{ nextcloud_domain }}"
+      changed_when: false
+      failed_when: false
+
+    - name: Enable Apache HSTS configuration
+      command: docker exec nextcloud-app a2enconf hsts
+      changed_when: false
+      failed_when: false
+
+    - name: Reload Apache in Nextcloud container
+      command: docker exec nextcloud-app apache2ctl graceful
       changed_when: false
       failed_when: false
 
