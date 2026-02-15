@@ -44,6 +44,7 @@ services:
       - NEXTCLOUD_TRUSTED_DOMAINS=${NEXTCLOUD_TRUSTED_DOMAINS}
       - OVERWRITEPROTOCOL=https
       - OVERWRITEHOST=${NEXTCLOUD_TRUSTED_DOMAINS}
+      - TRUSTED_PROXIES=172.16.0.0/12
     depends_on:
       - mariadb
       - redis
