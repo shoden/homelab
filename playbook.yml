@@ -11,6 +11,10 @@
     nextcloud_domain: myhost.local
     nextcloud_port: 8080
     
+    # Clean install: Set to true to remove all volumes and recreate (useful for development)
+    # Set to false to preserve data and just update containers/configs (useful for updates)
+    clean_install: false
+    
     # Credentials (customize these)
     mysql_root_password: "{{ lookup('env', 'MYSQL_ROOT_PASSWORD') | default('changeme_root_password', true) }}"
     mysql_database: nextcloud
@@ -42,18 +46,27 @@
         groups: docker
         append: yes
 
-    - name: Stop existing Docker Compose stack
+    - name: Stop existing Docker Compose stack (with volume removal)
       command:
         cmd: docker-compose down -v
         chdir: "{{ nextcloud_base_dir }}"
       ignore_errors: yes
+      when: clean_install | bool
 
-    - name: Remove Nextcloud base directory
+    - name: Stop existing Docker Compose stack (preserve volumes)
+      command:
+        cmd: docker-compose down
+        chdir: "{{ nextcloud_base_dir }}"
+      ignore_errors: yes
+      when: not (clean_install | bool)
+
+    - name: Remove Nextcloud base directory (clean install only)
       file:
         path: "{{ nextcloud_base_dir }}"
         state: absent
+      when: clean_install | bool
 
-    - name: Recreate volume directories
+    - name: Ensure base directories exist
       file:
         path: "{{ item }}"
         state: directory
