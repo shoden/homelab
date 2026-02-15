@@ -4,8 +4,8 @@
   become: yes
   vars:
     nextcloud_base_dir: /opt/nextcloud
-    nextcloud_data_dir: "{{ nextcloud_base_dir }}/data"
-    mariadb_data_dir: "{{ nextcloud_base_dir }}/mariadb"
+    nextcloud_app_dir: "{{ nextcloud_base_dir }}/app"
+    mariadb_data_dir: "{{ nextcloud_base_dir }}/db"
     redis_data_dir: "{{ nextcloud_base_dir }}/redis"
     nextcloud_port: 8080
     
@@ -45,7 +45,7 @@
         mode: '0755'
       loop:
         - "{{ nextcloud_base_dir }}"
-        - "{{ nextcloud_data_dir }}"
+        - "{{ nextcloud_app_dir }}"
         - "{{ mariadb_data_dir }}"
         - "{{ redis_data_dir }}"
 
