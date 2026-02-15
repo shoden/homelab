@@ -18,7 +18,7 @@
     nextcloud_admin_password: "{{ lookup('env', 'NEXTCLOUD_ADMIN_PASSWORD') | default('changeme_admin_password', true) }}"
 
   tasks:
-    - name: Install Docker and Docker Compose
+    - name: Install required packages
       apt:
         name:
           - docker.io
@@ -40,7 +40,18 @@
         groups: docker
         append: yes
 
-    - name: Create volume directories
+    - name: Stop existing Docker Compose stack
+      command:
+        cmd: docker-compose down -v
+        chdir: "{{ nextcloud_base_dir }}"
+      ignore_errors: yes
+
+    - name: Remove Nextcloud base directory
+      file:
+        path: "{{ nextcloud_base_dir }}"
+        state: absent
+
+    - name: Recreate volume directories
       file:
         path: "{{ item }}"
         state: directory
@@ -63,17 +74,20 @@
         dest: "{{ nextcloud_base_dir }}/docker-compose.yml"
         mode: '0644'
 
-    - name: Stop existing Docker Compose stack
-      command:
-        cmd: docker-compose down
-        chdir: "{{ nextcloud_base_dir }}"
-      ignore_errors: yes
-
     - name: Start Docker Compose stack
       command:
         cmd: docker-compose up -d
         chdir: "{{ nextcloud_base_dir }}"
       register: docker_compose_output
+
+    - name: Create occ helper script
+      copy:
+        content: |
+          #!/bin/bash
+          # Nextcloud occ command helper
+          docker exec -u www-data nextcloud-app php occ "$@"
+        dest: /usr/local/bin/nextcloud-occ
+        mode: '0755'
 
     - name: Wait for Nextcloud to be ready
       uri:
@@ -86,6 +100,18 @@
       delay: 10
       ignore_errors: yes
 
+    - name: Run maintenance repair to add missing MIME types
+      command: /usr/local/bin/nextcloud-occ maintenance:repair --include-expensive
+      register: occ_output
+      changed_when: false
+      failed_when: false
+
+    - name: Add missing database indices
+      command: /usr/local/bin/nextcloud-occ db:add-missing-indices
+      register: occ_indices_output
+      changed_when: false
+      failed_when: false
+
     - name: Display deployment information
       debug:
         msg:
@@ -93,3 +119,6 @@
           - "Access Nextcloud at: http://{{ ansible_host }}:{{ nextcloud_port }}"
           - "Admin username: {{ nextcloud_admin_user }}"
           - "Please check the .env file for credentials at {{ nextcloud_base_dir }}/.env"
+          - ""
+          - "To run occ commands, use: nextcloud-occ <command>"
+          - "Example: nextcloud-occ maintenance:mode --on"
