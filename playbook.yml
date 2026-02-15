@@ -139,6 +139,11 @@
       changed_when: false
       failed_when: false
 
+    - name: Disable Nextcloud first run wizard
+      command: /usr/local/bin/nextcloud-occ config:app:set --value false firstrunwizard wizard_enabled
+      changed_when: false
+      failed_when: false
+
     - name: Enable Apache HSTS configuration
       command: docker exec nextcloud-app a2enconf hsts
       changed_when: false
