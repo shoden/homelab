@@ -1,0 +1,145 @@
+---
+- name: Renew Caddy SSL certificates
+  hosts: nextcloud
+  become: yes
+  vars:
+    nextcloud_base_dir: /opt/nextcloud
+    caddy_data_dir: "{{ nextcloud_base_dir }}/caddy"
+    nextcloud_domain: myhost.local
+    
+  tasks:
+    - name: Check if Caddy container exists
+      shell: docker ps --filter "name=nextcloud-caddy" | grep -q nextcloud-caddy
+      register: caddy_container
+      changed_when: false
+      failed_when: false
+      
+    - name: Fail if Caddy is not deployed
+      fail:
+        msg: "Caddy container does not exist. Please deploy Nextcloud first using playbook.yml"
+      when: caddy_container.rc != 0
+      
+    - name: Display current certificate info
+      find:
+        paths: "{{ caddy_data_dir }}/data/caddy/pki/authorities/local"
+        patterns: "root.crt"
+        recurse: yes
+      register: current_ca
+      
+    - name: Show current CA certificate details
+      stat:
+        path: "{{ item.path }}"
+      loop: "{{ current_ca.files }}"
+      register: ca_stats
+      when: current_ca.files | length > 0
+      
+    - name: Display certificate age
+      debug:
+        msg: "Current CA certificate last modified: {{ item.stat.mtime | default('N/A') }}"
+      loop: "{{ ca_stats.results }}"
+      when: ca_stats.results is defined and item.stat is defined
+      
+    # - name: Confirm certificate renewal
+    #   pause:
+    #     prompt: |
+    #
+    #       ⚠️  WARNING: This will regenerate all SSL certificates!
+    #
+    #       After renewal, you MUST:
+    #       1. Remove old certificates from all devices
+    #       2. Download and install new certificates on all devices
+    #       3. Run: ansible-playbook -i inventory.ini fetch-certificate.yml
+    #
+    #       Continue with certificate renewal? (yes/no)
+    #   register: confirm_renewal
+    #
+    # - name: Stop playbook if not confirmed
+    #   fail:
+    #     msg: "Certificate renewal cancelled by user"
+    #   when: confirm_renewal.user_input | lower != 'yes'
+      
+    - name: Stop Caddy container
+      command: docker stop nextcloud-caddy
+      register: caddy_stop
+      
+    - name: Remove Caddy PKI directory (triggers certificate regeneration)
+      file:
+        path: "{{ caddy_data_dir }}/data/caddy/pki"
+        state: absent
+        
+    - name: Remove Caddy certificates directory
+      file:
+        path: "{{ caddy_data_dir }}/data/caddy/certificates"
+        state: absent
+
+    - name: Deploy Caddyfile
+      template:
+        src: Caddyfile.j2
+        dest: "{{ caddy_data_dir }}/Caddyfile"
+        mode: '0644'
+        
+    - name: Start Caddy container
+      command: docker start nextcloud-caddy
+      register: caddy_start
+      
+    - name: Check Caddy container status
+      shell: docker ps --filter "name=nextcloud-caddy" | grep -q nextcloud-caddy
+      register: caddy_status
+      changed_when: false
+      until: caddy_status.rc == 0
+      retries: 10
+      delay: 1
+      
+    # - name: Wait for new certificates to be generated
+    #   pause:
+    #     seconds: 10
+      
+    - name: Verify new CA certificate was created
+      find:
+        paths: "{{ caddy_data_dir }}/data/caddy/pki/authorities/local"
+        patterns: "root.crt"
+        recurse: yes
+      register: new_ca
+      until: new_ca.files | length > 0
+      retries: 60
+      delay: 1
+      
+    - name: Get new certificate details
+      stat:
+        path: "{{ item.path }}"
+      loop: "{{ new_ca.files }}"
+      register: new_ca_stats
+      when: new_ca.files | length > 0
+      
+    - name: Verify certificate was regenerated
+      fail:
+        msg: "Certificate renewal failed - new CA certificate not found"
+      when: new_ca.files | length == 0
+      
+    - name: Display renewal summary
+      debug:
+        msg:
+          - "✓ Certificates renewed successfully!"
+          - ""
+          - "New CA certificate created: {{ item.stat.mtime }}"
+          - "Location: {{ item.stat.path }}"
+          - ""
+          - "⚠️  IMPORTANT NEXT STEPS:"
+          - "1. Remove old 'myhost-caddy-root-ca.crt' from ALL devices:"
+          - "   - Windows: certmgr.msc > Trusted Root Certification Authorities"
+          - "   - macOS: Keychain Access > System > Remove old 'Caddy Local Authority'"
+          - "   - Linux: sudo rm /usr/local/share/ca-certificates/myhost-caddy-root-ca.crt && sudo update-ca-certificates"
+          - "   - iOS: Settings > General > VPN & Device Management > Remove profile"
+          - "   - Android: Settings > Security > Remove certificate"
+          - ""
+          - "2. Fetch new certificates:"
+          - "   ansible-playbook -i inventory.ini fetch-certificate.yml"
+          - ""
+          - "3. Install new certificates on all devices"
+          - "   Follow instructions in certificates/INSTALL-INSTRUCTIONS.txt"
+          - ""
+          - "4. Clear browser cache and restart browsers"
+      loop: "{{ new_ca_stats.results }}"
+      when: new_ca_stats.results is defined and item.stat is defined
+      loop_control:
+        label: "{{ item.stat.path | default('N/A') }}"

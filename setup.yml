@@ -13,7 +13,7 @@
     
     # Clean install: Set to true to remove all volumes and recreate (useful for development)
     # Set to false to preserve data and just update containers/configs (useful for updates)
-    clean_install: false
+    clean_install: true
     
     # Credentials (customize these)
     mysql_root_password: "{{ lookup('env', 'MYSQL_ROOT_PASSWORD') | default('changeme_root_password', true) }}"
@@ -29,6 +29,7 @@
         name:
           - docker.io
           - docker-compose
+          - libnss3-tools
           - tree
           - neovim
         state: present

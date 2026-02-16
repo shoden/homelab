@@ -47,6 +47,7 @@ services:
       - OVERWRITEHOST=${NEXTCLOUD_TRUSTED_DOMAINS}
       - TRUSTED_PROXIES=172.16.0.0/12
       - APACHE_DISABLE_REWRITE_IP=1
+      - APACHE_SERVERNAME=${NEXTCLOUD_TRUSTED_DOMAINS}
     depends_on:
       - mariadb
       - redis
@@ -64,6 +65,9 @@ services:
       - ${CADDY_DATA_DIR}/Caddyfile:/etc/caddy/Caddyfile
       - ${CADDY_DATA_DIR}/data:/data
       - ${CADDY_DATA_DIR}/config:/config
+    environment:
+      - CADDY_PKI_CA_LOCAL_LIFETIME=8760h0m0s
+      - CADDY_PKI_CA_LOCAL_INTERMEDIATE_LIFETIME=8760h0m0s
     depends_on:
       - nextcloud
     networks:
