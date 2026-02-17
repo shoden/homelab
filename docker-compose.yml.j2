@@ -53,23 +53,32 @@ services:
       - redis
     networks:
       - nextcloud-network
-
-  caddy:
-    image: caddy:2.10.2-alpine
-    container_name: nextcloud-caddy
+  nginx:
+    image: 'jc21/nginx-proxy-manager:2.14.0'
+    container_name: nextcloud-proxy
     restart: unless-stopped
     ports:
-      - "80:80"
-      - "443:443"
-    volumes:
-      - ${CADDY_DATA_DIR}/Caddyfile:/etc/caddy/Caddyfile
-      - ${CADDY_DATA_DIR}/data:/data
-      - ${CADDY_DATA_DIR}/config:/config
+      # These ports are in format <host-port>:<container-port>
+      - '80:80' # Public HTTP Port
+      - '443:443' # Public HTTPS Port
+      - '81:81' # Admin Web Port
+      # Add any other Stream port you want to expose
+      # - '21:21' # FTP
     environment:
-      - CADDY_PKI_CA_LOCAL_LIFETIME=8760h0m0s
-      - CADDY_PKI_CA_LOCAL_INTERMEDIATE_LIFETIME=8760h0m0s
+      - TZ="Europe/Madrid"
+      - DB_MYSQL_HOST=mariadb
+      - DB_MYSQL_PORT=3306
+      - DB_MYSQL_USER=${MYSQL_USER} 
+      - DB_MYSQL_PASSWORD=${MYSQL_PASSWORD}
+      - DB_MYSQL_NAME=${MYSQL_DATABASE}
+      - DISABLE_IPV6='true'
+      - INITIAL_ADMIN_EMAIL=${NGINX_ADMIN_EMAIL}
+      - INITIAL_ADMIN_PASWORD=${NGINX_ADMIN_PASSWORD}
+    volumes:
+      - ${NGINX_DATA_DIR}/data:/data
+      - ${NGINX_DATA_DIR}/letsencrypt:/etc/letsencrypt
     depends_on:
-      - nextcloud
+      - mariadb
     networks:
       - nextcloud-network
 
@@ -81,3 +90,4 @@ volumes:
   nextcloud-data:
   mariadb-data:
   redis-data:
+  nginx-data:
