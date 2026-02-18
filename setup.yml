@@ -149,6 +149,12 @@
       changed_when: false
       failed_when: false
 
+    - name: Disable Nextcloud demo files for new users
+      command: /usr/local/bin/nextcloud-occ config:system:set skeletondirectory --value=''
+      register: occ_output
+      changed_when: false
+      failed_when: false
+
     - name: Configure Nextcloud HSTS header
       command: /usr/local/bin/nextcloud-occ config:system:set overwrite.cli.url --value="https://{{ nextcloud_domain }}"
       changed_when: false
