@@ -1,5 +1,5 @@
 ---
-- name: Deploy Nextcloud with MariaDB and Redis using Docker Compose
+- name: Deploy Nextcloud stack
   hosts: nextcloud
   become: yes
   vars:
@@ -8,12 +8,12 @@
     mariadb_data_dir: "{{ nextcloud_base_dir }}/db"
     redis_data_dir: "{{ nextcloud_base_dir }}/redis"
     nginx_data_dir: "{{ nextcloud_base_dir }}/nginx-proxy-manager"
-    nextcloud_domain: nenakis.duckdns.org
+    nextcloud_domain: "nextcloud.example.com"
     nextcloud_port: 8080
     
     # Clean install: Set to true to remove all volumes and recreate (useful for development)
     # Set to false to preserve data and just update containers/configs (useful for updates)
-    clean_install: true
+    clean_install: false
     
     # Credentials (customize these)
     mysql_root_password: "{{ lookup('env', 'MYSQL_ROOT_PASSWORD') | default('changeme_root_password', true) }}"
@@ -49,7 +49,7 @@
         groups: docker
         append: yes
 
-    - name: Stop existing Docker Compose stack (with volume removal)
+    - name: Stop existing Docker Compose stack (remove volumes)
       command:
         cmd: docker-compose down -v
         chdir: "{{ nextcloud_base_dir }}"
@@ -75,7 +75,6 @@
         state: directory
         mode: '0755'
       loop:
-        - "{{ nextcloud_base_dir }}"
         - "{{ nextcloud_data_dir }}"
         - "{{ mariadb_data_dir }}"
         - "{{ redis_data_dir }}"
@@ -114,17 +113,23 @@
         dest: /usr/local/bin/nextcloud-occ
         mode: '0755'
 
-    - name: Wait for Nextcloud to be ready
-      uri:
-        url: "https://{{ nextcloud_domain }}"
-        status_code: 200
-        timeout: 5
-        validate_certs: no
-      register: result
-      until: result.status == 200
+    - name: Wait for Nextcloud container to be healthy
+      shell: docker inspect --format='{{"{{.State.Health.Status}}"}}' nextcloud-app
+      register: health_check
+      until: health_check.stdout == "healthy"
+      retries: 60
+      delay: 5
+      changed_when: false
+
+    - name: Wait for Nextcloud to be fully installed
+      command: /usr/local/bin/nextcloud-occ status --output=json
+      register: nextcloud_status
+      until: >
+        nextcloud_status.rc == 0 and
+        (nextcloud_status.stdout | from_json).installed == true
       retries: 30
-      delay: 10
-      ignore_errors: yes
+      delay: 5
+      changed_when: false
 
     - name: Add missing MIME types to Nextcloud
       command: /usr/local/bin/nextcloud-occ maintenance:repair --include-expensive
