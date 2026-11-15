@@ -1,0 +1,15 @@
+---
+- name: Gracefully shutdown Nextcloud stack and power off
+  hosts: nextcloud
+  become: yes
+
+  tasks:
+    - name: Stop Nextcloud stack
+      systemd:
+        name: nextcloud-stack
+        state: stopped
+
+    - name: Power off
+      ansible.builtin.command: /sbin/poweroff
+      async: 1
+      poll: 0

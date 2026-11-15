@@ -8,6 +8,7 @@
     mariadb_data_dir: "{{ nextcloud_base_dir }}/db"
     redis_data_dir: "{{ nextcloud_base_dir }}/redis"
     nginx_data_dir: "{{ nextcloud_base_dir }}/nginx-proxy-manager"
+    netdata_data_dir: "{{ nextcloud_base_dir }}/netdata"
     nextcloud_domain: "nextcloud.example.com"
     nextcloud_port: 8080
     
@@ -79,6 +80,9 @@
         - "{{ mariadb_data_dir }}"
         - "{{ redis_data_dir }}"
         - "{{ nginx_data_dir }}"
+        - "{{ netdata_data_dir }}/config"
+        - "{{ netdata_data_dir }}/lib"
+        - "{{ netdata_data_dir }}/cache"
 
     - name: Deploy .env file
       template:
