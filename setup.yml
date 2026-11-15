@@ -134,10 +134,12 @@
         name: nextcloud-stack
         enabled: yes
 
-    - name: Start Nextcloud stack service
+    # restarted, not started: the oneshot unit stays "active" after the
+    # docker-compose down above, so "started" would be a no-op on reruns
+    - name: (Re)start Nextcloud stack service
       systemd:
         name: nextcloud-stack
-        state: started
+        state: restarted
       register: docker_compose_output
 
     - name: Create occ helper script
