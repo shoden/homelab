@@ -26,7 +26,7 @@ All containers share the `nextcloud-network` bridge network. Nextcloud waits for
 
 ```ini
 [nextcloud]
-myhost ansible_host=myhost.local ansible_user=myuser ansible_private_key=~/.ssh/id_ed25519
+myhost ansible_host=myhost.local ansible_user=myuser ansible_ssh_private_key_file=~/.ssh/id_ed25519
 ```
 
 ### Credentials
@@ -48,7 +48,7 @@ myhost ansible_host=myhost.local ansible_user=myuser ansible_private_key=~/.ssh/
 The `vars:` block in `setup.yml` sets these:
 
 - `nextcloud_domain`: `nextcloud.example.com`
-- `clean_install`: `false` keeps data and only refreshes configs and containers. `true` **deletes `/opt/nextcloud` and all data** before reinstalling.
+- `clean_install`: `false` keeps data and only refreshes configs, restarting containers when they change. `true` **deletes `/opt/nextcloud` and all data** before reinstalling.
 - Data directories under `/opt/nextcloud`:
   - `app/`: Nextcloud `/var/www/html`
   - `db/`: MariaDB
@@ -71,24 +71,25 @@ You can also run them directly:
 ansible-playbook -i inventory.ini setup.yml
 ansible-playbook -i inventory.ini setup.yml --check --diff   # dry run
 ansible-playbook -i inventory.ini setup.yml -e clean_install=true   # full wipe and reinstall
+ansible-playbook -i inventory.ini setup.yml -e run_repair=true      # also run the slow repair/index steps
 ```
 
 ### What `setup.yml` does
 
+The playbook is idempotent. A rerun with no changes causes no downtime and reports almost nothing as changed.
+
 1. Installs Docker and docker-compose, and adds the SSH user to the `docker` group.
-2. Stops any existing stack. If `clean_install` is set, it also removes the volumes and `/opt/nextcloud`.
-3. Creates the data directories and renders `.env`, `docker-compose.yml` and `apache-hsts.conf`.
-4. Installs and starts the `nextcloud-stack` systemd service, which starts the stack at boot and stops it cleanly on shutdown.
+2. Only if `clean_install` is set: stops the stack and deletes its volumes and `/opt/nextcloud`.
+3. Creates the data directories and renders `.env`, `docker-compose.yml`, `apache-hsts.conf` and the `nextcloud-stack` systemd service.
+4. Restarts the stack **only if one of those files changed**. It then makes sure the service is enabled and running, so the stack starts at boot and stops cleanly on shutdown.
 5. Installs the `/usr/local/bin/nextcloud-occ` helper.
 6. Waits until `nextcloud-app` is healthy and Nextcloud reports itself as installed.
-7. Runs post-install `occ` tasks:
-   - repair with expensive checks
-   - add missing database indices
-   - set the maintenance window to start at 01:00
-   - turn off the demo files given to new users
-   - set `overwrite.cli.url`
-   - turn off the first-run wizard
-8. Enables the HSTS header in Apache.
+7. After a restart, or when run with `-e run_repair=true`, runs `maintenance:repair --include-expensive` and `db:add-missing-indices`.
+8. Applies Nextcloud settings, changing each one only if it differs from the current value:
+   - `config:system` settings from the `nextcloud_system_config` variable: maintenance window starting at 01:00, no demo files for new users, and `overwrite.cli.url`
+   - turns off the first-run wizard
+
+The HSTS header comes from `apache-hsts.conf`, which is mounted read-only into the container's `conf-enabled/`. It stays active when the container is recreated.
 
 ## HTTPS / Nginx Proxy Manager
 

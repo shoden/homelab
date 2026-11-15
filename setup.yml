@@ -15,6 +15,16 @@
     # Clean install: Set to true to remove all volumes and recreate (useful for development)
     # Set to false to preserve data and just update containers/configs (useful for updates)
     clean_install: false
+
+    # Run the slow "maintenance:repair --include-expensive" and missing-index steps
+    # even when the stack was not restarted (they always run after a restart)
+    run_repair: false
+
+    # Nextcloud config.php settings, applied only when they differ from the current value
+    nextcloud_system_config:
+      - { key: maintenance_window_start, value: "1", type: integer }
+      - { key: skeletondirectory, value: "" }                          # no demo files for new users
+      - { key: overwrite.cli.url, value: "https://{{ nextcloud_domain }}" }
     
     # Credentials (customize these)
     mysql_root_password: "{{ lookup('env', 'MYSQL_ROOT_PASSWORD') | default('changeme_root_password', true) }}"
@@ -37,6 +47,7 @@
           - neovim
         state: present
         update_cache: yes
+        cache_valid_time: 3600
 
     - name: Ensure Docker service is running
       systemd:
@@ -50,19 +61,12 @@
         groups: docker
         append: yes
 
-    - name: Stop existing Docker Compose stack (remove volumes)
+    - name: Stop existing Docker Compose stack and remove volumes (clean install only)
       command:
         cmd: docker-compose down -v
         chdir: "{{ nextcloud_base_dir }}"
       ignore_errors: yes
       when: clean_install | bool
-
-    - name: Stop existing Docker Compose stack (preserve volumes)
-      command:
-        cmd: docker-compose down
-        chdir: "{{ nextcloud_base_dir }}"
-      ignore_errors: yes
-      when: not (clean_install | bool)
 
     - name: Remove Nextcloud base directory (clean install only)
       file:
@@ -89,18 +93,21 @@
         src: .env.j2
         dest: "{{ nextcloud_base_dir }}/.env"
         mode: '0600'
+      register: env_file
 
     - name: Deploy docker-compose.yml
       template:
         src: docker-compose.yml.j2
         dest: "{{ nextcloud_base_dir }}/docker-compose.yml"
         mode: '0644'
+      register: compose_file
 
     - name: Deploy Apache HSTS configuration
       template:
         src: apache-hsts.conf.j2
         dest: "{{ nextcloud_base_dir }}/apache-hsts.conf"
         mode: '0644'
+      register: hsts_file
 
     - name: Create systemd service for Nextcloud stack
       copy:
@@ -124,23 +131,25 @@
           WantedBy=multi-user.target
         dest: /etc/systemd/system/nextcloud-stack.service
         mode: '0644'
+      register: unit_file
 
-    - name: Reload systemd daemon
-      systemd:
-        daemon_reload: yes
+    - name: Determine whether the stack must be restarted
+      set_fact:
+        stack_config_changed: "{{ [env_file, compose_file, hsts_file, unit_file] | select('changed') | list | length > 0 }}"
 
-    - name: Enable Nextcloud stack service
-      systemd:
-        name: nextcloud-stack
-        enabled: yes
-
-    # restarted, not started: the oneshot unit stays "active" after the
-    # docker-compose down above, so "started" would be a no-op on reruns
-    - name: (Re)start Nextcloud stack service
+    # Only restart when a deployed file changed; otherwise the run causes no downtime.
+    - name: Restart Nextcloud stack (configuration changed)
       systemd:
         name: nextcloud-stack
         state: restarted
-      register: docker_compose_output
+        daemon_reload: yes
+      when: stack_config_changed | bool
+
+    - name: Ensure Nextcloud stack service is enabled and running
+      systemd:
+        name: nextcloud-stack
+        enabled: yes
+        state: started
 
     - name: Create occ helper script
       copy:
@@ -169,50 +178,46 @@
       delay: 5
       changed_when: false
 
-    - name: Add missing MIME types to Nextcloud
+    # Slow on large instances: only after a restart (e.g. image upgrade) or with -e run_repair=true
+    - name: Run Nextcloud repair including expensive steps (adds missing MIME types)
       command: /usr/local/bin/nextcloud-occ maintenance:repair --include-expensive
-      register: occ_output
-      changed_when: false
       failed_when: false
+      when: stack_config_changed | bool or run_repair | bool
 
     - name: Add Nextcloud missing database indices
       command: /usr/local/bin/nextcloud-occ db:add-missing-indices
-      register: occ_indices_output
+      failed_when: false
+      when: stack_config_changed | bool or run_repair | bool
+
+    - name: Read current Nextcloud system config
+      command: /usr/local/bin/nextcloud-occ config:system:get {{ item.key }}
+      loop: "{{ nextcloud_system_config }}"
+      loop_control:
+        label: "{{ item.key }}"
+      register: system_config_current
       changed_when: false
       failed_when: false
 
-    - name: Add Nextcloud maintenance window
-      command: /usr/local/bin/nextcloud-occ config:system:set maintenance_window_start --type=integer --value=1
-      register: occ_output
-      changed_when: false
-      failed_when: false
+    - name: Set Nextcloud system config
+      command: >-
+        /usr/local/bin/nextcloud-occ config:system:set {{ item.item.key }}
+        --value={{ item.item.value | string | quote }}
+        {% if item.item.type is defined %}--type={{ item.item.type }}{% endif %}
+      loop: "{{ system_config_current.results }}"
+      loop_control:
+        label: "{{ item.item.key }}"
+      when: item.rc != 0 or item.stdout != (item.item.value | string)
 
-    - name: Disable Nextcloud demo files for new users
-      command: /usr/local/bin/nextcloud-occ config:system:set skeletondirectory --value=''
-      register: occ_output
-      changed_when: false
-      failed_when: false
-
-    - name: Configure Nextcloud HSTS header
-      command: /usr/local/bin/nextcloud-occ config:system:set overwrite.cli.url --value="https://{{ nextcloud_domain }}"
+    - name: Read first run wizard setting
+      command: /usr/local/bin/nextcloud-occ config:app:get firstrunwizard wizard_enabled
+      register: firstrunwizard_current
       changed_when: false
       failed_when: false
 
     - name: Disable Nextcloud first run wizard
       command: /usr/local/bin/nextcloud-occ config:app:set --value false firstrunwizard wizard_enabled
-      changed_when: false
-      failed_when: false
+      when: firstrunwizard_current.rc != 0 or firstrunwizard_current.stdout != 'false'
 
-    - name: Enable Apache HSTS configuration
-      command: docker exec nextcloud-app a2enconf hsts
-      changed_when: false
-      failed_when: false
-
-    - name: Reload Apache in Nextcloud container
-      command: docker exec nextcloud-app apache2ctl graceful
-      changed_when: false
-      failed_when: false
-    #
     - name: Display deployment information
       debug:
         msg:

@@ -44,7 +44,7 @@ services:
     restart: unless-stopped
     volumes:
       - ${NEXTCLOUD_DATA_DIR}:/var/www/html
-      - ${NEXTCLOUD_BASE_DIR}/apache-hsts.conf:/etc/apache2/conf-available/hsts.conf
+      - ${NEXTCLOUD_BASE_DIR}/apache-hsts.conf:/etc/apache2/conf-enabled/hsts.conf:ro
     environment:
       - MYSQL_HOST=mariadb
       - MYSQL_DATABASE=${MYSQL_DATABASE}
