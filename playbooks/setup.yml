@@ -2,7 +2,7 @@
 - name: Deploy Nextcloud stack
   hosts: nextcloud
   become: yes
-  # Settings come from group_vars/all/defaults.yml (project defaults) and from
+  # Settings come from playbooks/group_vars/all/defaults.yml (project defaults) and from
   # inventory/group_vars/nextcloud/{main,vault}.yml (your site; see inventory.example/).
   pre_tasks:
     - name: Check required settings are provided
@@ -75,7 +75,7 @@
 
     - name: Deploy .env file
       template:
-        src: .env.j2
+        src: env.j2
         dest: "{{ nextcloud_base_dir }}/.env"
         mode: '0600'
       register: env_file

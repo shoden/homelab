@@ -14,6 +14,20 @@ Ansible playbooks for a self-hosted homelab. Currently they deploy a Nextcloud s
 
 All containers share the `nextcloud-network` bridge network. Nextcloud waits for MariaDB and Redis to pass their healthchecks before starting. Nginx Proxy Manager handles TLS and proxies to `nextcloud-app:80`. It stores its own config in the same MariaDB database.
 
+## Repository layout
+
+```
+ansible.cfg              Ansible settings (default inventory: ./inventory)
+run.sh                   runs a playbook: ./run.sh setup.yml
+playbooks/
+  setup.yml backup.yml restore.yml reboot.yml shutdown.yml
+  templates/             env.j2, docker-compose.yml.j2, apache-hsts.conf.j2
+  group_vars/all/        defaults.yml: project defaults
+inventory.example/       template for your site settings (copy it to inventory/, which is gitignored)
+renovate.json, renovate.sh, .github/workflows/   dependency updates
+doc/                     extra documentation
+```
+
 ## Prerequisites
 
 - Ansible 2.19+ on the control machine
@@ -40,7 +54,7 @@ To keep your configuration outside this repository, put the same layout anywhere
 
 ### Settings
 
-Defaults are in `group_vars/all/defaults.yml`. Override any of them in `inventory/group_vars/nextcloud/main.yml`. Use that group, not `group_vars/all`: Ansible gives the group precedence over `all`.
+Defaults are in `playbooks/group_vars/all/defaults.yml`. Override any of them in `inventory/group_vars/nextcloud/main.yml`. Use that group, not `group_vars/all`: Ansible gives the group precedence over `all`.
 
 | Variable | Default | Notes |
 |---|---|---|
@@ -61,7 +75,7 @@ Defaults are in `group_vars/all/defaults.yml`. Override any of them in `inventor
 | `nextcloud_admin_password` | Nextcloud admin user |
 | `nginx_admin_password` | Nginx Proxy Manager initial admin |
 
-Setting values flow like this: Ansible variables → `.env.j2` (rendered to `<base dir>/.env`, mode 0600) → `${VAR}` references in `docker-compose.yml.j2`.
+Setting values flow like this: Ansible variables → `playbooks/templates/env.j2` (rendered to `<base dir>/.env`, mode 0600) → `${VAR}` references in `playbooks/templates/docker-compose.yml.j2`.
 
 ## Playbooks
 
@@ -74,10 +88,10 @@ Setting values flow like this: Ansible variables → `.env.j2` (rendered to `<ba
 You can also run them directly:
 
 ```bash
-ansible-playbook --ask-vault-pass setup.yml               # uses ./inventory (see ansible.cfg)
-ansible-playbook --ask-vault-pass setup.yml --check --diff   # dry run
-ansible-playbook --ask-vault-pass setup.yml -e clean_install=true   # full wipe and reinstall
-ansible-playbook --ask-vault-pass setup.yml -e run_repair=true      # also run the slow repair/index steps
+ansible-playbook --ask-vault-pass playbooks/setup.yml               # uses ./inventory (see ansible.cfg)
+ansible-playbook --ask-vault-pass playbooks/setup.yml --check --diff   # dry run
+ansible-playbook --ask-vault-pass playbooks/setup.yml -e clean_install=true   # full wipe and reinstall
+ansible-playbook --ask-vault-pass playbooks/setup.yml -e run_repair=true      # also run the slow repair/index steps
 ```
 
 `./run.sh` also accepts extra arguments, e.g. `./run.sh setup.yml -e run_repair=true`.
@@ -204,9 +218,9 @@ nextcloud-occ maintenance:mode --on
 
 ## Updating
 
-Image versions are pinned in `docker-compose.yml.j2`. [Renovate](https://docs.renovatebot.com/) watches them and opens pull requests when new versions come out. Merging a PR only changes the pinned tag in the repository. **Nothing is deployed until you run `./run.sh setup.yml`**, which recreates the containers with the new images.
+Image versions are pinned in `playbooks/templates/docker-compose.yml.j2`. [Renovate](https://docs.renovatebot.com/) watches them and opens pull requests when new versions come out. Merging a PR only changes the pinned tag in the repository. **Nothing is deployed until you run `./run.sh setup.yml`**, which recreates the containers with the new images.
 
-You can also update by hand: bump the tags in `docker-compose.yml.j2` and run `./run.sh setup.yml`. It keeps your data unless `clean_install` is set.
+You can also update by hand: bump the tags in `playbooks/templates/docker-compose.yml.j2` and run `./run.sh setup.yml`. It keeps your data unless `clean_install` is set.
 
 ### Dependency updates with Renovate
 

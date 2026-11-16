@@ -3,7 +3,7 @@
 nextcloud_domain: nextcloud.example.com    # public domain served by Nginx Proxy Manager
 nginx_admin_email: admin@example.com       # initial Nginx Proxy Manager admin login
 
-# Optional overrides (defaults live in group_vars/all/defaults.yml)
+# Optional overrides (defaults live in playbooks/group_vars/all/defaults.yml)
 # timezone: Europe/Madrid
 # nextcloud_base_dir: /opt/nextcloud
 # nextcloud_admin_user: admin
