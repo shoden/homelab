@@ -67,6 +67,7 @@ Setting values flow like this: Ansible variables → `.env.j2` (rendered to `<ba
 
 ```bash
 ./run.sh setup.yml       # deploy or update the stack
+./run.sh reboot.yml      # stop the stack, reboot the host, wait until Nextcloud is healthy again
 ./run.sh shutdown.yml    # stop the stack gracefully and power off the host
 ```
 

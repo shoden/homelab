@@ -1,0 +1,45 @@
+---
+- name: Gracefully reboot the host and wait for the Nextcloud stack
+  hosts: nextcloud
+  become: yes
+
+  tasks:
+    # Same graceful stop as shutdown.yml, so the containers are down before the host goes down.
+    - name: Stop Nextcloud stack
+      systemd:
+        name: nextcloud-stack
+        state: stopped
+
+    - name: Reboot the host and wait for it to come back
+      reboot:
+        reboot_timeout: 600
+
+    # nextcloud-stack.service is enabled, so systemd starts the stack at boot.
+    - name: Wait for Nextcloud container to be healthy
+      command: docker inspect --format='{{ '{{.State.Health.Status}}' }}' nextcloud-app
+      register: health_check
+      until: health_check.stdout == "healthy"
+      retries: 60
+      delay: 5
+      changed_when: false
+
+    - name: Wait for Nextcloud to be fully installed
+      command: /usr/local/bin/nextcloud-occ status --output=json
+      register: nextcloud_status
+      until: >
+        nextcloud_status.rc == 0 and
+        (nextcloud_status.stdout | from_json).installed == true
+      retries: 30
+      delay: 5
+      changed_when: false
+
+    - name: Show stack status
+      command: docker-compose ps
+      args:
+        chdir: "{{ nextcloud_base_dir }}"
+      register: stack_status
+      changed_when: false
+
+    - name: Display stack status
+      debug:
+        var: stack_status.stdout_lines

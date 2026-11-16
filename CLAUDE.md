@@ -10,6 +10,7 @@ A flat (no roles) Ansible project that deploys a self-hosted Nextcloud stack via
 
 ```bash
 ./run.sh setup.yml       # deploy/update the stack (idempotent). Extra args pass through, e.g. -e run_repair=true
+./run.sh reboot.yml      # stop the stack, reboot the host and wait for Nextcloud to be healthy (stack starts at boot via systemd)
 ./run.sh shutdown.yml    # stop the stack via systemd and power off the host
 ./run.sh setup.yml --check --diff    # dry run
 ansible-playbook setup.yml --syntax-check
