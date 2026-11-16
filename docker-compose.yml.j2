@@ -2,7 +2,7 @@ version: '3.8'
 
 services:
   mariadb:
-    image: mariadb:11.8.6
+    image: mariadb:11.8.9
     container_name: nextcloud-mariadb
     restart: unless-stopped
     command: --transaction-isolation=READ-COMMITTED --log-bin=binlog --binlog-format=ROW
@@ -23,7 +23,7 @@ services:
       - nextcloud-network
 
   redis:
-    image: redis:8.2.4-alpine
+    image: redis:8.10.3-alpine
     container_name: nextcloud-redis
     restart: unless-stopped
     command: redis-server --requirepass ${REDIS_PASSWORD}
@@ -39,7 +39,7 @@ services:
       - nextcloud-network
 
   nextcloud:
-    image: nextcloud:32.0.6-apache
+    image: nextcloud:32.0.15-apache
     container_name: nextcloud-app
     restart: unless-stopped
     volumes:
@@ -74,7 +74,7 @@ services:
     networks:
       - nextcloud-network
   nginx:
-    image: 'jc21/nginx-proxy-manager:2.14.0'
+    image: 'jc21/nginx-proxy-manager:2.17.0'
     container_name: nextcloud-proxy
     restart: unless-stopped
     ports:
@@ -103,7 +103,7 @@ services:
       - nextcloud-network
 
   netdata:
-    image: netdata/netdata:v2.9.0
+    image: netdata/netdata:v2.12.3
     container_name: nextcloud-netdata
     restart: unless-stopped
     pid: host
