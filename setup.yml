@@ -122,6 +122,16 @@
       set_fact:
         stack_config_changed: "{{ [env_file, compose_file, hsts_file, unit_file] | select('changed') | list | length > 0 }}"
 
+    # New image tags (e.g. from a merged Renovate PR) are downloaded while the old stack is still
+    # running, so the downtime is only the restart and the systemd start timeout (300s) is not
+    # spent on slow pulls. Pulling can be slow on a small host, hence the 30 minute task timeout.
+    - name: Pull container images (configuration changed)
+      command: docker-compose pull
+      args:
+        chdir: "{{ nextcloud_base_dir }}"
+      timeout: 1800
+      when: stack_config_changed | bool
+
     # Only restart when a deployed file changed; otherwise the run causes no downtime.
     - name: Restart Nextcloud stack (configuration changed)
       systemd:
