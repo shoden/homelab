@@ -20,28 +20,21 @@ vault_args=(--ask-vault-pass)
 
 if [ $# -eq 0 ] || [[ "$1" == -* ]]; then
   # no playbook given: choose one interactively
-  if ! command -v fzf >/dev/null 2>&1; then
-    echo "Error: you need to pass a playbook (install fzf to pick one interactively). Available: $(available)" >&2
-    exit 1
-  fi
+  for tool in fzf yq; do
+    if ! command -v "$tool" >/dev/null 2>&1; then
+      echo "Error: you need to pass a playbook (the interactive picker needs fzf and yq, '$tool' is missing). Available: $(available)" >&2
+      exit 1
+    fi
+  done
   if [ ! -t 0 ]; then
     echo "Error: you need to pass a playbook when not running in a terminal. Available: $(available)" >&2
     exit 1
   fi
   # one line per playbook: "<file without .yml> - <name of its first play>", e.g. "setup - Deploy Nextcloud stack"
-  stems=() names=() width=0
-  for f in playbooks/*.yml; do
-    stem=$(basename "$f" .yml)
-    name=$(awk '/^- name:/ { sub(/^- name: */, ""); gsub(/^["'\'']|["'\'']$/, ""); print; exit }' "$f")
-    stems+=("$stem") names+=("${name:-(no name)}")
-    ((${#stem} > width)) && width=${#stem}
-  done
-  choices=""
-  for i in "${!stems[@]}"; do
-    choices+=$(printf '%-*s - %s' "$width" "${stems[$i]}" "${names[$i]}")$'\n'
-  done
-  selected=$(printf '%s' "$choices" | fzf --prompt='playbook> ' --cycle --height=40% --reverse \
-    --header='Enter: run   Esc: cancel' || true)
+  selected=$(for f in playbooks/*.yml; do
+      printf '%s|- %s\n' "$(basename "$f" .yml)" "$(yq -r '.[0].name' "$f")"
+    done | column -t -s '|' | fzf --prompt='playbook> ' --cycle --height=40% --reverse \
+      --header='Enter: run   Esc: cancel' || true)
   if [ -z "$selected" ]; then
     echo "No playbook selected." >&2
     exit 1
