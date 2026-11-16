@@ -28,8 +28,16 @@ if [ $# -eq 0 ] || [[ "$1" == -* ]]; then
 		echo "Error: you need to pass a playbook when not running in a terminal. Available: $(available)" >&2
 		exit 1
 	fi
+	# preview with syntax highlighting if bat is installed (called batcat on Debian/Ubuntu)
+	preview='sed -n "1,40p" {}'
+	for bat in batcat bat; do
+		if command -v "$bat" >/dev/null 2>&1; then
+			preview="$bat --style=plain --color=always --language=yaml --line-range=:40 {}"
+			break
+		fi
+	done
 	playbook=$(cd playbooks && ls -- *.yml | fzf --prompt='playbook> ' --height=40% --reverse \
-		--header='Enter: run   Esc: cancel' --preview='sed -n "1,14p" {}' --preview-window=right,60% || true)
+		--header='Enter: run   Esc: cancel' --preview="$preview" --preview-window=right,60% || true)
 	if [ -z "$playbook" ]; then
 		echo "No playbook selected." >&2
 		exit 1
