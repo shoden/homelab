@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-A flat (no roles) Ansible project that deploys a self-hosted Nextcloud stack via Docker Compose to a single host. The repo is host/domain agnostic: all site-specific values (host, domain, email, passwords) live in the gitignored `inventory/` directory (copy of `inventory.example/`), never in tracked files. There is no build, lint or test suite.
+Homelab: a flat (no roles) Ansible project for self-hosted services. It currently deploys one stack, Nextcloud with its supporting services, via Docker Compose to a single host. The `nextcloud` inventory group, `nextcloud-*` container names and `/opt/nextcloud` paths refer to that stack, not to the project name. The repo is host/domain agnostic: all site-specific values (host, domain, email, passwords) live in the gitignored `inventory/` directory (copy of `inventory.example/`), never in tracked files. There is no build, lint or test suite.
 
 ## Commands
 

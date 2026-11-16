@@ -1,6 +1,6 @@
-# Nextcloud Deployment with Ansible
+# Homelab
 
-Ansible playbooks that deploy a self-hosted Nextcloud stack with Docker Compose on a single Debian/Ubuntu host, served publicly at a domain you choose.
+Ansible playbooks for a self-hosted homelab. Currently they deploy a Nextcloud stack (Nextcloud, MariaDB, Redis, Nginx Proxy Manager and Netdata) with Docker Compose on a single Debian/Ubuntu host, each application served on its own subdomain over HTTPS.
 
 ## Stack
 
