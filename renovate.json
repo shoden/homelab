@@ -1,0 +1,40 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "config:recommended"
+  ],
+  "dependencyDashboard": true,
+  "docker-compose": {
+    "managerFilePatterns": [
+      "/(^|/)(?:docker-)?compose[^/]*\\.ya?ml(?:\\.j2)?$/"
+    ]
+  },
+  "packageRules": [
+    {
+      "description": "Majors (Nextcloud one at a time, MariaDB/Redis data migrations) are only proposed after approval from the Dependency Dashboard issue",
+      "matchUpdateTypes": [
+        "major"
+      ],
+      "dependencyDashboardApproval": true
+    },
+    {
+      "description": "Nextcloud supports upgrading one major version at a time: offer each major separately instead of jumping to the latest",
+      "matchPackageNames": [
+        "nextcloud"
+      ],
+      "separateMultipleMajor": true
+    },
+    {
+      "description": "Group all non-major container image updates into one PR",
+      "matchManagers": [
+        "docker-compose"
+      ],
+      "matchUpdateTypes": [
+        "minor",
+        "patch",
+        "digest"
+      ],
+      "groupName": "container images"
+    }
+  ]
+}

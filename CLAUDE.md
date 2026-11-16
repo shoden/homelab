@@ -13,6 +13,7 @@ Homelab: a flat (no roles) Ansible project for self-hosted services. It currentl
 ./run.sh reboot.yml      # stop the stack, reboot the host and wait for Nextcloud to be healthy (stack starts at boot via systemd)
 ./run.sh shutdown.yml    # stop the stack via systemd and power off the host
 ./run.sh setup.yml --check --diff    # dry run
+./renovate.sh --local     # dry run of Renovate in Docker: shows which image updates it would propose
 ansible-playbook setup.yml --syntax-check
 ./run.sh setup.yml -e clean_install=true   # WIPES the base dir and all volumes
 ```
@@ -29,6 +30,7 @@ On the target host, `nextcloud-occ <args>` (installed by `setup.yml`) wraps `doc
 - **Lifecycle / idempotency**: the stack runs as the systemd unit `nextcloud-stack.service` (oneshot, `RemainAfterExit=yes`, `docker-compose up -d` / `down`), so it starts at boot and stops cleanly on shutdown. `setup.yml` registers the `.env`, compose, HSTS-conf and unit-file tasks and restarts the unit **only if one changed** (`stack_config_changed`); otherwise it just ensures `state: started`. Don't add an unconditional `docker-compose down` before that — the oneshot unit stays "active", so `started` would then not bring containers back. New template files that require a restart must be registered and added to the `stack_config_changed` list.
 - **Nextcloud settings** are applied read-then-write: `config:system` keys live in the `nextcloud_system_config` var (get, then set only if different). The slow `maintenance:repair --include-expensive` / `db:add-missing-indices` run only after a restart or with `-e run_repair=true`.
 - **HSTS** comes from `apache-hsts.conf.j2`, bind-mounted read-only into the container's `/etc/apache2/conf-enabled/` (not enabled via `a2enconf`, which would be lost when `docker-compose down` recreates the container).
+- **Dependency updates**: Renovate (`renovate.json`, run by `.github/workflows/renovate.yml` or `./renovate.sh`) updates the image tags in `docker-compose.yml.j2`. Majors need approval in the Dependency Dashboard issue and nothing is automerged; the image manager is pointed at the `.j2` file via `managerFilePatterns`. Merging only changes the repo, deploying is still `./run.sh setup.yml`.
 - Uses legacy `docker-compose` (v1 binary from apt `docker-compose` package), not `docker compose`.
 
 ## Known quirks

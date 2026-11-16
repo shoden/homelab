@@ -169,10 +169,39 @@ nextcloud-occ maintenance:mode --on
 
 ## Updating
 
-Image versions are pinned in `docker-compose.yml.j2`. To update:
+Image versions are pinned in `docker-compose.yml.j2`. [Renovate](https://docs.renovatebot.com/) watches them and opens pull requests when new versions come out. Merging a PR only changes the pinned tag in the repository. **Nothing is deployed until you run `./run.sh setup.yml`**, which recreates the containers with the new images.
 
-1. Bump the tags in `docker-compose.yml.j2`.
-2. Run `./run.sh setup.yml`. It keeps your data unless `clean_install` is set.
+You can also update by hand: bump the tags in `docker-compose.yml.j2` and run `./run.sh setup.yml`. It keeps your data unless `clean_install` is set.
+
+### Dependency updates with Renovate
+
+Configuration is in `renovate.json`:
+
+- Minor, patch and digest updates of the container images arrive together in one PR named "container images".
+- **Major updates are not proposed until you approve them** by ticking the box in the *Dependency Dashboard* issue. This matters here: Nextcloud supports upgrading one major version at a time, and major MariaDB or Redis upgrades can need data migrations. Read the release notes and back up before approving one. Nextcloud majors are offered one at a time (for example 33, then 34), so approve them in order and deploy after each.
+- Nothing is merged automatically.
+
+**Where to see it on GitHub**
+
+| What | Where |
+|---|---|
+| Pipeline runs and logs | repository → **Actions** → **Renovate** |
+| Update PRs | **Pull requests** |
+| Pending and held-back updates, approval checkboxes | **Issues** → *Dependency Dashboard* |
+
+`.github/workflows/renovate.yml` runs Renovate (in its Docker container) every Monday at 05:00 UTC. To run it right away, open **Actions → Renovate → Run workflow**. The scheduled run and that button only work once the workflow file is on the default branch.
+
+**One-time setup:** the workflow needs a token that can open PRs.
+
+1. Create a fine-grained personal access token (GitHub → Settings → Developer settings), limited to this repository, with *Read and write* for **Contents**, **Pull requests**, **Issues** and **Workflows**, and *Read* for **Metadata**.
+2. Save it as a repository secret named `RENOVATE_TOKEN` (repository → Settings → Secrets and variables → Actions).
+
+**Running it yourself** (needs Docker):
+
+```bash
+./renovate.sh --local          # dry run: lists the updates found, changes nothing, no token needed
+RENOVATE_TOKEN=... ./renovate.sh   # open/update the PRs on GitHub from your machine
+```
 
 ## Security notes
 
