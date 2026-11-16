@@ -159,9 +159,11 @@ sudo systemctl status nextcloud-stack
 sudo systemctl restart nextcloud-stack
 sudo systemctl stop nextcloud-stack
 
+# docker-compose needs sudo: /opt/nextcloud/.env (all the secrets) is readable only by root
 cd /opt/nextcloud
-docker-compose ps
-docker-compose logs -f nextcloud
+sudo docker-compose ps
+sudo docker-compose logs -f nextcloud
+sudo docker-compose pull
 
 nextcloud-occ status
 nextcloud-occ maintenance:mode --on
