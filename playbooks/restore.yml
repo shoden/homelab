@@ -9,7 +9,7 @@
 #         ./run.sh restore.yml -e backup=20261116T180000Z
 # Options: -e pre_restore_backup=false  -e confirm_restore=true  -e restore_files_scan=true
 # New host: run setup.yml first (installs Docker and the service), then restore.yml.
-- name: Check the backup to restore
+- name: Restore a Nextcloud backup (check and confirm)
   hosts: nextcloud
   become: yes
 

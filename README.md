@@ -94,7 +94,7 @@ ansible-playbook --ask-vault-pass playbooks/setup.yml -e clean_install=true   # 
 ansible-playbook --ask-vault-pass playbooks/setup.yml -e run_repair=true      # also run the slow repair/index steps
 ```
 
-`./run.sh` also accepts extra arguments, e.g. `./run.sh setup.yml -e run_repair=true`. Run it without a playbook (`./run.sh`, or just options like `./run.sh --check --diff`) and, if [fzf](https://github.com/junegunn/fzf) is installed, you pick the playbook from a list that previews each one (syntax-highlighted if `batcat` or `bat` is installed).
+`./run.sh` also accepts extra arguments, e.g. `./run.sh setup.yml -e run_repair=true`. Run it without a playbook (`./run.sh`, or just options like `./run.sh --check --diff`) and, if [fzf](https://github.com/junegunn/fzf) is installed, you pick the playbook from a list that shows each playbook's name and description (the `name:` of its first play, e.g. `setup    - Deploy Nextcloud stack`). You can type to filter on either.
 
 ### What `setup.yml` does
 

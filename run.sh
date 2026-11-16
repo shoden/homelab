@@ -11,47 +11,52 @@ available() { (cd playbooks && ls -- *.yml | tr '\n' ' '); }
 
 inventory="${INVENTORY:-inventory}"
 if [ ! -e "$inventory" ]; then
-	echo "Error: inventory '$inventory' not found. Copy inventory.example/ to inventory/ and edit it." >&2
-	exit 1
+  echo "Error: inventory '$inventory' not found. Copy inventory.example/ to inventory/ and edit it." >&2
+  exit 1
 fi
 
 vault_args=(--ask-vault-pass)
 [ -f .vault_pass ] && vault_args=(--vault-password-file .vault_pass)
 
 if [ $# -eq 0 ] || [[ "$1" == -* ]]; then
-	# no playbook given: choose one interactively
-	if ! command -v fzf >/dev/null 2>&1; then
-		echo "Error: you need to pass a playbook (install fzf to pick one interactively). Available: $(available)" >&2
-		exit 1
-	fi
-	if [ ! -t 0 ]; then
-		echo "Error: you need to pass a playbook when not running in a terminal. Available: $(available)" >&2
-		exit 1
-	fi
-	# preview with syntax highlighting if bat is installed (called batcat on Debian/Ubuntu)
-	preview='sed -n "1,40p" {}'
-	for bat in batcat bat; do
-		if command -v "$bat" >/dev/null 2>&1; then
-			preview="$bat --style=plain --color=always --language=yaml --line-range=:40 {}"
-			break
-		fi
-	done
-	playbook=$(cd playbooks && ls -- *.yml | fzf --prompt='playbook> ' --height=40% --reverse \
-		--header='Enter: run   Esc: cancel' --preview="$preview" --preview-window=right,60% || true)
-	if [ -z "$playbook" ]; then
-		echo "No playbook selected." >&2
-		exit 1
-	fi
+  # no playbook given: choose one interactively
+  if ! command -v fzf >/dev/null 2>&1; then
+    echo "Error: you need to pass a playbook (install fzf to pick one interactively). Available: $(available)" >&2
+    exit 1
+  fi
+  if [ ! -t 0 ]; then
+    echo "Error: you need to pass a playbook when not running in a terminal. Available: $(available)" >&2
+    exit 1
+  fi
+  # one line per playbook: "<file without .yml> - <name of its first play>", e.g. "setup - Deploy Nextcloud stack"
+  stems=() names=() width=0
+  for f in playbooks/*.yml; do
+    stem=$(basename "$f" .yml)
+    name=$(awk '/^- name:/ { sub(/^- name: */, ""); gsub(/^["'\'']|["'\'']$/, ""); print; exit }' "$f")
+    stems+=("$stem") names+=("${name:-(no name)}")
+    ((${#stem} > width)) && width=${#stem}
+  done
+  choices=""
+  for i in "${!stems[@]}"; do
+    choices+=$(printf '%-*s - %s' "$width" "${stems[$i]}" "${names[$i]}")$'\n'
+  done
+  selected=$(printf '%s' "$choices" | fzf --prompt='playbook> ' --cycle --height=40% --reverse \
+    --header='Enter: run   Esc: cancel' || true)
+  if [ -z "$selected" ]; then
+    echo "No playbook selected." >&2
+    exit 1
+  fi
+  playbook=${selected%% *}
 else
-	playbook="$1"
-	shift
+  playbook="$1"
+  shift
 fi
 
 # playbooks live in playbooks/; accept "setup.yml", "setup" or a path
 [ -f "$playbook" ] || playbook="playbooks/${playbook%.yml}.yml"
 if [ ! -f "$playbook" ]; then
-	echo "Error: playbook not found. Available: $(available)" >&2
-	exit 1
+  echo "Error: playbook not found. Available: $(available)" >&2
+  exit 1
 fi
 echo "Running playbook $playbook..."
 ansible-playbook -i "$inventory" "${vault_args[@]}" "$playbook" "$@"
