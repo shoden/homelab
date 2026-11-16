@@ -1,0 +1,173 @@
+---
+# Back up everything needed to bring the stack back to this point in time:
+#   db.sql.gz                 the database (Nextcloud and Nginx Proxy Manager share it)
+#   nextcloud-app.tar.gz      /var/www/html volume: Nextcloud code, config.php, apps (no user files unless backup_include_data)
+#   nginx-proxy-manager.tar.gz proxy hosts, certificates
+#   config/                   .env, docker-compose.yml, apache-hsts.conf (image versions and passwords of that moment)
+#   manifest.yml              what the backup contains
+# Nextcloud is put in maintenance mode while it runs, so database and files are consistent.
+# Usage: ./run.sh backup.yml [-e backup_keep=5] [-e backup_include_data=true]
+- name: Back up the Nextcloud stack
+  hosts: nextcloud
+  become: yes
+  vars:
+    backup_name: "{{ ansible_facts['date_time']['iso8601_basic_short'] }}Z{{ backup_suffix }}"
+    backup_partial: "{{ backup_dir }}/{{ backup_name }}.partial"
+    backup_final: "{{ backup_dir }}/{{ backup_name }}"
+    occ: docker exec -u www-data nextcloud-app php occ
+
+  pre_tasks:
+    - name: Check backup settings
+      assert:
+        that:
+          - (backup_keep | int) >= 1
+          - backup_dir | length > 1
+          - not (backup_dir | regex_search('^' ~ (nextcloud_base_dir | regex_escape) ~ '(/|$)'))
+        fail_msg: "backup_keep must be >= 1 and backup_dir must be outside {{ nextcloud_base_dir }} (clean_install deletes it)."
+        quiet: true
+
+  tasks:
+    - name: Check the stack is running
+      command: docker inspect --format='{{ '{{.State.Running}}' }}' {{ item }}
+      loop:
+        - nextcloud-app
+        - nextcloud-mariadb
+      register: running
+      changed_when: false
+      failed_when: running.stdout != 'true'
+
+    - name: Create the backup directory
+      file:
+        path: "{{ item }}"
+        state: directory
+        mode: '0700'
+      loop:
+        - "{{ backup_dir }}"
+        - "{{ backup_partial }}"
+        - "{{ backup_partial }}/config"
+
+    - name: Back up
+      block:
+        - name: Read Nextcloud status
+          command: "{{ occ }} status --output=json"
+          register: nc_status_raw
+          changed_when: false
+
+        - name: Remember Nextcloud version and maintenance state
+          set_fact:
+            nc_status: "{{ nc_status_raw.stdout | from_json }}"
+
+        - name: Enable Nextcloud maintenance mode
+          command: "{{ occ }} maintenance:mode --on"
+          when: not nc_status.maintenance
+          register: maintenance_on
+
+        - name: Dump the database
+          shell: |
+            set -o pipefail
+            umask 077
+            docker exec nextcloud-mariadb sh -c 'MYSQL_PWD="$MYSQL_ROOT_PASSWORD" exec mariadb-dump -uroot --single-transaction --routines --events --databases "$MYSQL_DATABASE"' | gzip > "{{ backup_partial }}/db.sql.gz"
+          args:
+            executable: /bin/bash
+
+        - name: Archive the Nextcloud volume
+          command: >-
+            tar --numeric-owner {{ '' if backup_include_data | bool else '--exclude=./data' }}
+            -czf {{ backup_partial }}/nextcloud-app.tar.gz -C {{ nextcloud_data_dir }} .
+          register: tar_app
+          failed_when: tar_app.rc > 1  # 1 = a file changed while reading, e.g. a log
+
+        - name: Archive the Nginx Proxy Manager data
+          command: >-
+            tar --numeric-owner -czf {{ backup_partial }}/nginx-proxy-manager.tar.gz -C {{ nginx_data_dir }} .
+          register: tar_npm
+          failed_when: tar_npm.rc > 1
+
+        - name: Copy the stack configuration
+          copy:
+            src: "{{ nextcloud_base_dir }}/{{ item }}"
+            dest: "{{ backup_partial }}/config/{{ item }}"
+            remote_src: yes
+            mode: '0600'
+          loop:
+            - .env
+            - docker-compose.yml
+            - apache-hsts.conf
+
+        - name: Restrict the permissions of the backup (it contains secrets and private keys)
+          command: chmod -R u=rwX,go= {{ backup_partial }}
+
+        - name: Verify the archives and the database dump
+          shell: |
+            set -o pipefail
+            cd "{{ backup_partial }}"
+            gzip -t db.sql.gz nextcloud-app.tar.gz nginx-proxy-manager.tar.gz
+            zcat db.sql.gz | tail -n 1 | grep -q 'Dump completed'
+          args:
+            executable: /bin/bash
+          changed_when: false
+
+        - name: List the backup files
+          command: find {{ backup_partial }} -type f -printf '%P %s\n'
+          register: backup_files
+          changed_when: false
+
+        - name: Read the image versions
+          shell: grep -E '^\s+image:' {{ nextcloud_base_dir }}/docker-compose.yml | sed -E "s/^\s+image:\s*//; s/'//g"
+          register: backup_images
+          changed_when: false
+
+        - name: Write the manifest
+          copy:
+            dest: "{{ backup_partial }}/manifest.yml"
+            mode: '0600'
+            content: "{{ manifest | to_nice_yaml }}"
+          vars:
+            manifest:
+              name: "{{ backup_name }}"
+              created_utc: "{{ ansible_facts['date_time']['iso8601'] }}"
+              nextcloud_version: "{{ nc_status.versionstring }}"
+              images: "{{ backup_images.stdout_lines }}"
+              include_data: "{{ backup_include_data | bool }}"
+              files: "{{ backup_files.stdout_lines }}"
+              complete: true
+
+        - name: Finish the backup (rename from .partial)
+          command: mv {{ backup_partial }} {{ backup_final }}
+
+      rescue:
+        - name: Remove the incomplete backup
+          file:
+            path: "{{ backup_partial }}"
+            state: absent
+
+        - name: Backup failed
+          fail:
+            msg: "The backup failed and the incomplete copy was removed. Existing backups were not touched."
+
+      always:
+        - name: Disable Nextcloud maintenance mode (only if this playbook enabled it)
+          command: "{{ occ }} maintenance:mode --off"
+          when: maintenance_on is defined and maintenance_on is changed
+
+    - name: List completed backups
+      find:
+        paths: "{{ backup_dir }}"
+        file_type: directory
+        patterns: '^[0-9]{8}T[0-9]{6}Z$'
+        use_regex: true
+      register: backups_found
+
+    - name: Remove old backups (keep {{ backup_keep }})
+      file:
+        path: "{{ item }}"
+        state: absent
+      loop: "{{ (backups_found.files | map(attribute='path') | sort(reverse=true))[(backup_keep | int):] }}"
+      when: backup_prune | bool
+
+    - name: Backup summary
+      debug:
+        msg:
+          - "Backup created: {{ backup_final }}"
+          - "Nextcloud {{ nc_status.versionstring }}, images: {{ backup_images.stdout_lines | join(', ') }}"
+          - "Kept: {{ ((backups_found.files | map(attribute='path') | sort(reverse=true))[:(backup_keep | int)] if backup_prune | bool else (backups_found.files | map(attribute='path') | sort(reverse=true))) | map('basename') | list }}"

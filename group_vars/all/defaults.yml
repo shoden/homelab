@@ -30,3 +30,22 @@ nextcloud_system_config:
   - { key: maintenance_window_start, value: "1", type: integer }
   - { key: skeletondirectory, value: "" }                          # no demo files for new users
   - { key: overwrite.cli.url, value: "https://{{ nextcloud_domain }}" }
+
+# Backups (backup.yml / restore.yml)
+# Outside nextcloud_base_dir on purpose: clean_install deletes the base directory.
+backup_dir: /var/backups/nextcloud
+# How many completed backups to keep; older ones are removed after each new backup (minimum 1).
+backup_keep: 3
+# Also back up the user files (nextcloud_data_dir/data). Can be many GB and slow; an upgrade does not touch them.
+backup_include_data: false
+# Internal, set by restore.yml for its safety snapshot: name suffix and whether to prune old backups.
+backup_suffix: ""
+backup_prune: true
+
+# restore.yml
+# Take a safety backup of the current state before restoring over it.
+pre_restore_backup: true
+# Skip the typed confirmation (for non-interactive runs).
+confirm_restore: false
+# Rescan all user files after the restore. Slow on large instances; needed if files changed since the backup.
+restore_files_scan: false

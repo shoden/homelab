@@ -1,0 +1,204 @@
+---
+# Restore a backup made by backup.yml: database, Nextcloud volume (code, config.php, apps),
+# proxy data, and the .env / docker-compose.yml of that moment (so image versions match the data).
+# The current state is replaced. By default a safety backup of it is taken first (suffix -pre-restore,
+# never pruned).
+#
+# Usage:  ./run.sh restore.yml                       list the available backups
+#         ./run.sh restore.yml -e backup=latest      restore the newest one
+#         ./run.sh restore.yml -e backup=20261116T180000Z
+# Options: -e pre_restore_backup=false  -e confirm_restore=true  -e restore_files_scan=true
+# New host: run setup.yml first (installs Docker and the service), then restore.yml.
+- name: Check the backup to restore
+  hosts: nextcloud
+  become: yes
+
+  tasks:
+    - name: List completed backups
+      find:
+        paths: "{{ backup_dir }}"
+        file_type: directory
+        patterns: '^[0-9]{8}T[0-9]{6}Z$'
+        use_regex: true
+      register: backups_found
+
+    - name: Names of the available backups, newest first
+      set_fact:
+        available_backups: "{{ backups_found.files | map(attribute='path') | map('basename') | sort(reverse=true) | list }}"
+
+    - name: Say which backup to restore
+      fail:
+        msg: "Pass -e backup=<name> or -e backup=latest. Available in {{ backup_dir }}: {{ available_backups | default([]) }}"
+      when: backup is not defined or available_backups | length == 0
+
+    - name: Resolve the backup name
+      set_fact:
+        restore_name: "{{ available_backups[0] if backup == 'latest' else backup }}"
+        restore_src: "{{ backup_dir }}/{{ available_backups[0] if backup == 'latest' else backup }}"
+
+    - name: Check the backup exists
+      assert:
+        that: restore_name in available_backups
+        fail_msg: "No backup named '{{ restore_name }}' in {{ backup_dir }}. Available: {{ available_backups }}"
+        quiet: true
+
+    - name: Read the manifest
+      slurp:
+        src: "{{ restore_src }}/manifest.yml"
+      register: manifest_raw
+
+    - name: Parse the manifest
+      set_fact:
+        manifest: "{{ manifest_raw.content | b64decode | from_yaml }}"
+
+    - name: Check the backup is complete
+      assert:
+        that:
+          - manifest.complete | default(false)
+        fail_msg: "Backup {{ restore_name }} is not marked complete."
+        quiet: true
+
+    - name: Show what will be restored
+      debug:
+        msg:
+          - "Backup:    {{ restore_name }} (created {{ manifest.created_utc }})"
+          - "Nextcloud: {{ manifest.nextcloud_version }}, images: {{ manifest.images | join(', ') }}"
+          - "User files {{ 'ARE' if manifest.include_data else 'are NOT' }} part of this backup."
+          - "This REPLACES the current database, Nextcloud code and config, and proxy data."
+          - "{{ 'A safety backup of the current state is taken first.' if pre_restore_backup | bool else 'No safety backup of the current state will be taken.' }}"
+
+    - name: Confirm
+      pause:
+        prompt: "Type the backup name ({{ restore_name }}) to continue"
+      register: confirmation
+      when: not (confirm_restore | bool)
+
+    - name: Check the confirmation
+      assert:
+        that: confirmation.user_input == restore_name
+        fail_msg: "Not confirmed, nothing was changed."
+        quiet: true
+      when: not (confirm_restore | bool)
+
+- name: Safety backup of the current state
+  import_playbook: backup.yml
+  vars:
+    backup_suffix: "-pre-restore"
+    backup_prune: false
+  when: pre_restore_backup | bool
+
+- name: Restore the backup
+  hosts: nextcloud
+  become: yes
+  vars:
+    occ: docker exec -u www-data nextcloud-app php occ
+    compose: docker-compose --project-directory {{ nextcloud_base_dir }}
+
+  tasks:
+    - name: Check the directories that will be emptied
+      assert:
+        that:
+          - item is match('^/[^/]+/[^/]+')
+          - item not in ['/opt', '/var/lib', '/home']
+        fail_msg: "Refusing to empty '{{ item }}': it must be an absolute path at least two levels deep."
+        quiet: true
+      loop:
+        - "{{ nextcloud_data_dir }}"
+        - "{{ nginx_data_dir }}"
+        - "{{ mariadb_data_dir }}"
+
+    - name: Stop the stack
+      systemd:
+        name: nextcloud-stack
+        state: stopped
+
+    - name: Restore .env, docker-compose.yml and the HSTS config
+      copy:
+        src: "{{ restore_src }}/config/{{ item.name }}"
+        dest: "{{ nextcloud_base_dir }}/{{ item.name }}"
+        remote_src: yes
+        mode: "{{ item.mode }}"
+      loop:
+        - { name: .env, mode: '0600' }
+        - { name: docker-compose.yml, mode: '0644' }
+        - { name: apache-hsts.conf, mode: '0644' }
+
+    - name: Empty the Nextcloud volume (user files are kept unless the backup contains them)
+      shell: find {{ nextcloud_data_dir }} -mindepth 1 -maxdepth 1 {{ '' if manifest.include_data else '-not -name data' }} -exec rm -rf {} +
+
+    - name: Restore the Nextcloud volume
+      command: tar --numeric-owner -xzf {{ restore_src }}/nextcloud-app.tar.gz -C {{ nextcloud_data_dir }}
+
+    - name: Empty the Nginx Proxy Manager data
+      shell: find {{ nginx_data_dir }} -mindepth 1 -maxdepth 1 -exec rm -rf {} +
+
+    - name: Restore the Nginx Proxy Manager data
+      command: tar --numeric-owner -xzf {{ restore_src }}/nginx-proxy-manager.tar.gz -C {{ nginx_data_dir }}
+
+    - name: Empty the database directory (MariaDB initialises a fresh one)
+      shell: find {{ mariadb_data_dir }} -mindepth 1 -maxdepth 1 -exec rm -rf {} +
+
+    # Images of the backup's versions are normally still on the host; download only what is missing.
+    - name: Pull missing container images
+      command: "{{ compose }} pull --ignore-pull-failures"
+      timeout: 1800
+
+    - name: Start MariaDB alone
+      command: "{{ compose }} up -d mariadb"
+
+    - name: Wait for MariaDB to be healthy
+      command: docker inspect --format='{{ '{{.State.Health.Status}}' }}' nextcloud-mariadb
+      register: db_health
+      until: db_health.stdout == "healthy"
+      retries: 60
+      delay: 5
+      changed_when: false
+
+    - name: Import the database
+      shell: |
+        set -o pipefail
+        gunzip -c "{{ restore_src }}/db.sql.gz" | docker exec -i nextcloud-mariadb sh -c 'MYSQL_PWD="$MYSQL_ROOT_PASSWORD" exec mariadb -uroot'
+      args:
+        executable: /bin/bash
+
+    - name: Start the whole stack
+      systemd:
+        name: nextcloud-stack
+        state: started
+        daemon_reload: yes
+
+    - name: Wait for Nextcloud container to be healthy
+      command: docker inspect --format='{{ '{{.State.Health.Status}}' }}' nextcloud-app
+      register: health_check
+      until: health_check.stdout == "healthy"
+      retries: 60
+      delay: 5
+      changed_when: false
+
+    - name: Wait for Nextcloud to be fully installed
+      command: "{{ occ }} status --output=json"
+      register: nextcloud_status
+      until: >
+        nextcloud_status.rc == 0 and
+        (nextcloud_status.stdout | from_json).installed == true
+      retries: 30
+      delay: 5
+      changed_when: false
+
+    # The backup was taken in maintenance mode, so config.php says maintenance is on.
+    - name: Disable Nextcloud maintenance mode
+      command: "{{ occ }} maintenance:mode --off"
+
+    - name: Tell sync clients that the server data was restored
+      command: "{{ occ }} maintenance:data-fingerprint"
+
+    - name: Rescan all user files
+      command: "{{ occ }} files:scan --all"
+      when: restore_files_scan | bool
+
+    - name: Restore summary
+      debug:
+        msg:
+          - "Restored backup {{ restore_name }} (Nextcloud {{ manifest.nextcloud_version }})."
+          - "The passwords in .env / config.php are the ones from that moment: keep your vault consistent with them."
+          - "{{ 'Rescanned the user files.' if restore_files_scan | bool else 'If user files changed since the backup, run: nextcloud-occ files:scan --all' }}"

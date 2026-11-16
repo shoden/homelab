@@ -169,6 +169,39 @@ nextcloud-occ status
 nextcloud-occ maintenance:mode --on
 ```
 
+## Backups
+
+`backup.yml` takes a backup on the host and `restore.yml` puts one back. Nothing runs automatically: you start them when you want, for example before an upgrade.
+
+```bash
+./run.sh backup.yml                       # new backup, then remove the oldest ones beyond backup_keep
+./run.sh backup.yml -e backup_keep=5      # keep 5 instead of the default 3
+./run.sh restore.yml                      # list the available backups
+./run.sh restore.yml -e backup=latest     # restore the newest (or -e backup=20261116T180000Z)
+```
+
+**What a backup contains** (in `/var/backups/nextcloud/<UTC timestamp>/`, readable by root only):
+
+| File | Content |
+|---|---|
+| `db.sql.gz` | the database (Nextcloud and Nginx Proxy Manager share it) |
+| `nextcloud-app.tar.gz` | Nextcloud code, `config.php` and apps (not user files, see below) |
+| `nginx-proxy-manager.tar.gz` | proxy hosts and certificates |
+| `config/` | the `.env`, `docker-compose.yml` and HSTS config of that moment, i.e. the image versions and passwords that go with the data |
+| `manifest.yml` | what the backup contains and when it was made |
+
+- **Downtime:** Nextcloud is in maintenance mode while the backup runs (a few minutes), so the database and files agree. The other services keep running. The playbook turns maintenance mode off again even if the backup fails, unless it was already on.
+- **Retention:** after each successful backup, only the newest `backup_keep` (default 3, minimum 1) are kept. A backup that fails is deleted and never counts. Change the defaults in `inventory/group_vars/nextcloud/main.yml` or with `-e`.
+- **User files** (`app/data`) are **not** included by default: they can be many GB and an upgrade doesn't touch them. Add `-e backup_include_data=true` to include them. If the backup lacks them, a restore leaves your current files in place, so run `nextcloud-occ files:scan --all` afterwards if files changed since the backup (or restore with `-e restore_files_scan=true`).
+- **Where it lives:** `backup_dir` is outside `/opt/nextcloud`, so `clean_install` doesn't delete it. It is still on the same disk as the data, so it protects against a bad upgrade or a mistake, **not** against the disk dying. Copy the backups elsewhere, for example `rsync -a --rsync-path="sudo rsync" <user>@<host>:/var/backups/nextcloud/ /somewhere/safe/`.
+- **Scheduling:** to run it daily from the machine you deploy from, add a cron line such as `0 3 * * * cd /path/to/homelab && ./run.sh backup.yml` (it needs `.vault_pass`).
+
+**Restoring** replaces the current database, Nextcloud code and config, and proxy data with the backup, **and** the `.env` and `docker-compose.yml` of that moment, so the image versions match the data. It asks you to type the backup name to confirm (skip with `-e confirm_restore=true`). Before replacing anything it takes a safety backup of the current state, named `<timestamp>-pre-restore`, which is never deleted automatically (skip with `-e pre_restore_backup=false`, for example if the stack is too broken to back up).
+
+- The stack is down during the restore. The database is re-created from the dump, then Nextcloud starts, maintenance mode is turned off and sync clients are told the data was restored.
+- **Passwords** come back as they were at the time of the backup (they are in the `.env` and `config.php`). If you changed a password since, update `vault.yml` to match, or change it again afterwards.
+- **On a new host:** run `./run.sh setup.yml` first (it installs Docker and the service), copy the backup into `/var/backups/nextcloud/`, then run `restore.yml`.
+
 ## Updating
 
 Image versions are pinned in `docker-compose.yml.j2`. [Renovate](https://docs.renovatebot.com/) watches them and opens pull requests when new versions come out. Merging a PR only changes the pinned tag in the repository. **Nothing is deployed until you run `./run.sh setup.yml`**, which recreates the containers with the new images.
