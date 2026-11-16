@@ -8,9 +8,8 @@
     - name: Check required settings are provided
       assert:
         that:
-          - vars[item] is defined
-          - (vars[item] | string | length) > 0
-          - not ((vars[item] | string) is search('CHANGE_ME|changeme|example\\.(com|org)'))
+          - (lookup('vars', item, default='') | string | length) > 0
+          - not (lookup('vars', item, default='') | string is search('CHANGE_ME|changeme|example\\.(com|org)'))
         fail_msg: "'{{ item }}' is missing or still a placeholder. Set it in inventory/group_vars/nextcloud/ (see inventory.example/)."
         quiet: true
       loop:
