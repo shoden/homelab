@@ -1,0 +1,3 @@
+# Site-specific configuration and secrets: copy inventory.example/ to inventory/
+inventory/
+.vault_pass

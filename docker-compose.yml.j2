@@ -85,7 +85,7 @@ services:
       # Add any other Stream port you want to expose
       # - '21:21' # FTP
     environment:
-      - TZ="Europe/Madrid"
+      - TZ=${TIMEZONE}
       - DB_MYSQL_HOST=mariadb
       - DB_MYSQL_PORT=3306
       - DB_MYSQL_USER=${MYSQL_USER} 

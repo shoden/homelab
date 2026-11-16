@@ -1,0 +1,32 @@
+---
+# Project defaults. Do not put site-specific values here: override them in
+# inventory/group_vars/nextcloud/main.yml (see inventory.example/).
+# group_vars/nextcloud (inventory) beats group_vars/all (here), so use that group.
+
+nextcloud_base_dir: /opt/nextcloud
+nextcloud_data_dir: "{{ nextcloud_base_dir }}/app"
+mariadb_data_dir: "{{ nextcloud_base_dir }}/db"
+redis_data_dir: "{{ nextcloud_base_dir }}/redis"
+nginx_data_dir: "{{ nextcloud_base_dir }}/nginx-proxy-manager"
+netdata_data_dir: "{{ nextcloud_base_dir }}/netdata"
+
+timezone: UTC
+
+mysql_database: nextcloud
+mysql_user: nextcloud
+nextcloud_admin_user: admin
+nextcloud_port: 8080
+
+# Clean install: true removes all volumes and /opt/nextcloud (development only).
+# false preserves data and just updates containers/configs.
+clean_install: false
+
+# Run the slow "maintenance:repair --include-expensive" and missing-index steps
+# even when the stack was not restarted (they always run after a restart)
+run_repair: false
+
+# Nextcloud config.php settings, applied only when they differ from the current value
+nextcloud_system_config:
+  - { key: maintenance_window_start, value: "1", type: integer }
+  - { key: skeletondirectory, value: "" }                          # no demo files for new users
+  - { key: overwrite.cli.url, value: "https://{{ nextcloud_domain }}" }

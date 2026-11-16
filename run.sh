@@ -1,15 +1,25 @@
 #!/usr/bin/env bash
-
-export MYSQL_ROOT_PASSWORD='changeme_root_password'
-export MYSQL_PASSWORD='changeme_mysql_password'
-export NEXTCLOUD_ADMIN_PASSWORD='changeme_admin_password'
-export NGINX_ADMIN_EMAIL='admin@example.com'
-export NGINX_ADMIN_PASSWORD='changeme_nginx_password'
+# Usage: ./run.sh <playbook.yml> [ansible-playbook args...]
+# Uses ./inventory by default; override with INVENTORY=/path/to/inventory.
+# Vault password: ./.vault_pass if present, otherwise you are prompted.
+set -euo pipefail
+cd "$(dirname "$0")"
 
 if [ $# -eq 0 ]; then
-	echo "Error: You need to pass a playbook file"
-	exit
+	echo "Error: You need to pass a playbook file" >&2
+	exit 1
 fi
 
-echo "Running playbook $1..."
-ansible-playbook -i inventory.ini $1
+inventory="${INVENTORY:-inventory}"
+if [ ! -e "$inventory" ]; then
+	echo "Error: inventory '$inventory' not found. Copy inventory.example/ to inventory/ and edit it." >&2
+	exit 1
+fi
+
+vault_args=(--ask-vault-pass)
+[ -f .vault_pass ] && vault_args=(--vault-password-file .vault_pass)
+
+playbook="$1"
+shift
+echo "Running playbook $playbook..."
+ansible-playbook -i "$inventory" "${vault_args[@]}" "$playbook" "$@"
