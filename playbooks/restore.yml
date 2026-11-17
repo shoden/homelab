@@ -4,11 +4,12 @@
 # The current state is replaced. By default a safety backup of it is taken first (suffix -pre-restore,
 # never pruned).
 #
-# Usage:  ./run.sh restore.yml                       list the available backups
-#         ./run.sh restore.yml -e backup=latest      restore the newest one
-#         ./run.sh restore.yml -e backup=20261116T180000Z
+# Usage:  ./run.sh restore.yml <env>                       list the available backups
+#         ./run.sh restore.yml <env> -e backup=latest      restore the newest one
+#         ./run.sh restore.yml <env> -e backup=20261116T180000Z
 # Options: -e pre_restore_backup=false  -e confirm_restore=true  -e restore_files_scan=true
-# New host: run setup.yml first (installs Docker and the service), then restore.yml.
+# New host: run deploy.yml first (installs Docker and the service), then restore.yml.
+# A backup can only be restored into the environment it was made in (see restore_allow_other_env).
 - name: Restore a Nextcloud backup (check and confirm)
   hosts: nextcloud
   become: yes
@@ -58,6 +59,15 @@
         fail_msg: "Backup {{ restore_name }} is not marked complete."
         quiet: true
 
+    - name: Check the backup belongs to this environment
+      assert:
+        that: (manifest.stack_env | default(stack_env)) == stack_env or restore_allow_other_env | bool
+        fail_msg: >-
+          Backup {{ restore_name }} was made in the '{{ manifest.stack_env | default('?') }}' environment and you are
+          restoring into '{{ stack_env }}'. That would replace this environment's data and passwords with another's.
+          Pass -e restore_allow_other_env=true if that is what you want.
+        quiet: true
+
     - name: Show what will be restored
       debug:
         msg:
@@ -91,8 +101,8 @@
   hosts: nextcloud
   become: yes
   vars:
-    occ: docker exec -u www-data nextcloud-app php occ
     compose: docker-compose --project-directory {{ nextcloud_base_dir }}
+    restore_proxy_data: "{{ with_proxy | bool and (manifest.has_proxy | default(true) | bool) }}"
 
   tasks:
     - name: Check the directories that will be emptied
@@ -104,12 +114,12 @@
         quiet: true
       loop:
         - "{{ nextcloud_data_dir }}"
-        - "{{ nginx_data_dir }}"
+        - "{{ nginx_data_dir if with_proxy | bool else nextcloud_data_dir }}"
         - "{{ mariadb_data_dir }}"
 
     - name: Stop the stack
       systemd:
-        name: nextcloud-stack
+        name: "{{ stack_service }}"
         state: stopped
 
     - name: Restore .env, docker-compose.yml and the HSTS config
@@ -131,9 +141,11 @@
 
     - name: Empty the Nginx Proxy Manager data
       shell: find {{ nginx_data_dir }} -mindepth 1 -maxdepth 1 -exec rm -rf {} +
+      when: restore_proxy_data
 
     - name: Restore the Nginx Proxy Manager data
       command: tar --numeric-owner -xzf {{ restore_src }}/nginx-proxy-manager.tar.gz -C {{ nginx_data_dir }}
+      when: restore_proxy_data
 
     - name: Empty the database directory (MariaDB initialises a fresh one)
       shell: find {{ mariadb_data_dir }} -mindepth 1 -maxdepth 1 -exec rm -rf {} +
@@ -147,7 +159,7 @@
       command: "{{ compose }} up -d mariadb"
 
     - name: Wait for MariaDB to be healthy
-      command: docker inspect --format='{{ '{{.State.Health.Status}}' }}' nextcloud-mariadb
+      command: docker inspect --format='{{ '{{.State.Health.Status}}' }}' {{ container_db }}
       register: db_health
       until: db_health.stdout == "healthy"
       retries: 60
@@ -157,13 +169,13 @@
     - name: Import the database
       shell: |
         set -o pipefail
-        gunzip -c "{{ restore_src }}/db.sql.gz" | docker exec -i nextcloud-mariadb sh -c 'MYSQL_PWD="$MYSQL_ROOT_PASSWORD" exec mariadb -uroot'
+        gunzip -c "{{ restore_src }}/db.sql.gz" | docker exec -i {{ container_db }} sh -c 'MYSQL_PWD="$MYSQL_ROOT_PASSWORD" exec mariadb -uroot'
       args:
         executable: /bin/bash
 
     - name: Start the whole stack
       systemd:
-        name: nextcloud-stack
+        name: "{{ stack_service }}"
         state: started
         daemon_reload: yes
 
@@ -188,4 +200,4 @@
         msg:
           - "Restored backup {{ restore_name }} (Nextcloud {{ manifest.nextcloud_version }})."
           - "The passwords in .env / config.php are the ones from that moment: keep your vault consistent with them."
-          - "{{ 'Rescanned the user files.' if restore_files_scan | bool else 'If user files changed since the backup, run: nextcloud-occ files:scan --all' }}"
+          - "{{ 'Rescanned the user files.' if restore_files_scan | bool else 'If user files changed since the backup, run: {{ occ_helper | basename }} files:scan --all' }}"

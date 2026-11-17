@@ -1,5 +1,5 @@
 ---
-# Secrets. After filling in, encrypt this file:  ansible-vault encrypt inventory/group_vars/nextcloud/vault.yml
+# Secrets. After filling in, encrypt this file:  ansible-vault encrypt inventory/prod/group_vars/nextcloud/vault.yml
 # Generate a random password value with:  openssl rand -base64 24 | tr -d '/+='
 mysql_root_password: CHANGE_ME
 mysql_password: CHANGE_ME

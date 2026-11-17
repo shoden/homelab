@@ -3,7 +3,7 @@ version: '3.8'
 services:
   mariadb:
     image: mariadb:13.0.2
-    container_name: nextcloud-mariadb
+    container_name: {{ container_db }}
     restart: unless-stopped
     command: --transaction-isolation=READ-COMMITTED --log-bin=binlog --binlog-format=ROW
     volumes:
@@ -24,7 +24,7 @@ services:
 
   redis:
     image: redis:8.10.3-alpine
-    container_name: nextcloud-redis
+    container_name: {{ container_redis }}
     restart: unless-stopped
     command: redis-server --requirepass ${REDIS_PASSWORD}
     volumes:
@@ -40,7 +40,7 @@ services:
 
   nextcloud:
     image: nextcloud:33.0.11-apache
-    container_name: nextcloud-app
+    container_name: {{ container_app }}
     restart: unless-stopped
     volumes:
       - ${NEXTCLOUD_DATA_DIR}:/var/www/html
@@ -74,11 +74,16 @@ services:
       timeout: 5s
       retries: 20
       start_period: 600s
+{% if nextcloud_host_port | string | length > 0 %}
+    ports:
+      - '{{ nextcloud_host_port }}:80'
+{% endif %}
     networks:
       - nextcloud-network
+{% if with_proxy | bool %}
   nginx:
     image: 'jc21/nginx-proxy-manager:2.17.0'
-    container_name: nextcloud-proxy
+    container_name: {{ container_proxy }}
     restart: unless-stopped
     ports:
       # These ports are in format <host-port>:<container-port>
@@ -104,10 +109,12 @@ services:
       - mariadb
     networks:
       - nextcloud-network
+{% endif %}
+{% if with_netdata | bool %}
 
   netdata:
     image: netdata/netdata:v2.12.3
-    container_name: nextcloud-netdata
+    container_name: {{ container_netdata }}
     restart: unless-stopped
     pid: host
     cap_add:
@@ -133,6 +140,7 @@ services:
       - NETDATA_CLAIM_URL=https://app.netdata.cloud
     networks:
       - nextcloud-network
+{% endif %}
 
 networks:
   nextcloud-network:

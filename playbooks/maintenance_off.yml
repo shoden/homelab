@@ -1,14 +1,11 @@
 ---
-# Take Nextcloud out of maintenance mode. Switch it on with: ./run.sh maintenance_on.yml
+# Take Nextcloud out of maintenance mode. Switch it on with: ./run.sh maintenance_on.yml <env>
 - name: Switch Nextcloud maintenance mode off
   hosts: nextcloud
   become: yes
-  vars:
-    occ: docker exec -u www-data nextcloud-app php occ
-
   tasks:
     - name: Check the Nextcloud container is running
-      command: docker inspect --format='{{ '{{.State.Running}}' }}' nextcloud-app
+      command: docker inspect --format='{{ '{{.State.Running}}' }}' {{ container_app }}
       register: running
       changed_when: false
       failed_when: running.stdout != 'true'

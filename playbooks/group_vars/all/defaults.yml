@@ -1,9 +1,31 @@
 ---
 # Project defaults. Do not put site-specific values here: override them in
-# inventory/group_vars/nextcloud/main.yml (see inventory.example/).
+# inventory/<env>/group_vars/nextcloud/main.yml (see inventory.example/).
 # group_vars/nextcloud (inventory) beats group_vars/all (here), so use that group.
 
-nextcloud_base_dir: /opt/nextcloud
+# --- Environments -------------------------------------------------------------------------------
+# Every inventory (inventory/prod, inventory/dev, ...) sets `stack_env` (REQUIRED, no default on purpose).
+# Several environments can live on the same host: everything that has to be unique derives from
+# stack_name, so they don't clash. prod keeps the original names (nextcloud, nextcloud-app, ...).
+stack_name: "{{ 'nextcloud' if stack_env == 'prod' else 'nextcloud-' ~ stack_env }}"
+container_app: "{{ stack_name }}-app"
+container_db: "{{ stack_name }}-mariadb"
+container_redis: "{{ stack_name }}-redis"
+container_proxy: "{{ stack_name }}-proxy"
+container_netdata: "{{ stack_name }}-netdata"
+stack_service: "{{ stack_name }}-stack"                # systemd unit
+occ_helper: "/usr/local/bin/{{ stack_name }}-occ"      # prod: nextcloud-occ
+occ: "docker exec -u www-data {{ container_app }} php occ"
+
+# The reverse proxy (Nginx Proxy Manager: ports 80, 443, 81) and Netdata (port 19999) can only exist
+# once per host, so by default only prod runs them. Other environments are reached through prod's proxy.
+with_proxy: "{{ stack_env == 'prod' }}"
+with_netdata: "{{ stack_env == 'prod' }}"
+# Host port that publishes Nextcloud's port 80, so another stack's proxy can forward to <host>:<port>.
+# Empty = not published (prod: its proxy reaches it over the Docker network). Must be unique on the host.
+nextcloud_host_port: ""
+
+nextcloud_base_dir: "/opt/{{ stack_name }}"
 nextcloud_data_dir: "{{ nextcloud_base_dir }}/app"
 mariadb_data_dir: "{{ nextcloud_base_dir }}/db"
 redis_data_dir: "{{ nextcloud_base_dir }}/redis"
@@ -33,7 +55,7 @@ nextcloud_system_config:
 
 # Backups (backup.yml / restore.yml)
 # Outside nextcloud_base_dir on purpose: clean_install deletes the base directory.
-backup_dir: /var/backups/nextcloud
+backup_dir: "/var/backups/{{ stack_name }}"
 # How many completed backups to keep; older ones are removed after each new backup (minimum 1).
 backup_keep: 3
 # Also back up the user files (nextcloud_data_dir/data). Can be many GB and slow; an upgrade does not touch them.
@@ -47,5 +69,7 @@ backup_prune: true
 pre_restore_backup: true
 # Skip the typed confirmation (for non-interactive runs).
 confirm_restore: false
+# Allow restoring a backup made in another environment (it replaces this one's data and passwords).
+restore_allow_other_env: false
 # Rescan all user files after the restore. Slow on large instances; needed if files changed since the backup.
 restore_files_scan: false

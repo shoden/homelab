@@ -1,0 +1,12 @@
+---
+# Required
+stack_env: dev                                # the environment of this inventory (here: dev)
+nextcloud_domain: dev.nextcloud.example.com   # you add a proxy host for it by hand in prod's Nginx Proxy Manager
+
+# This environment has no proxy of its own (prod's owns ports 80, 443 and 81). Publish its Nextcloud on a
+# host port instead and point the proxy host at <host>:<port>. Must be unique on the machine.
+nextcloud_host_port: 8081
+
+# Optional overrides (defaults live in playbooks/group_vars/all/defaults.yml)
+# timezone: Europe/Madrid
+# nextcloud_admin_user: admin
