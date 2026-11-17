@@ -81,7 +81,7 @@ Setting values flow like this: Ansible variables → `playbooks/templates/env.j2
 
 ```bash
 ./run.sh setup.yml       # deploy or update the stack
-./run.sh reboot.yml      # stop the stack, reboot the host, wait until Nextcloud is healthy again
+./run.sh reboot.yml      # stop the stack, reboot the host, wait until Nextcloud is serving again
 ./run.sh shutdown.yml    # stop the stack gracefully and power off the host
 ./run.sh maintenance_on.yml    # put Nextcloud in maintenance mode (users see a maintenance page)
 ./run.sh maintenance_off.yml   # take it out of maintenance mode
@@ -108,7 +108,7 @@ The playbook is idempotent. A rerun with no changes causes no downtime and repor
 4. Creates the data directories and renders `.env`, `docker-compose.yml`, `apache-hsts.conf` and the `nextcloud-stack` systemd service.
 5. Restarts the stack **only if one of those files changed**. It then makes sure the service is enabled and running, so the stack starts at boot and stops cleanly on shutdown.
 6. Installs the `/usr/local/bin/nextcloud-occ` helper.
-7. Waits until `nextcloud-app` is healthy and Nextcloud reports itself as installed.
+7. Waits until Nextcloud is really serving requests, which can take several minutes after an image upgrade: the image first copies the new code and runs `occ upgrade`, and starts Apache only afterwards. The wait polls `status.php` (up to 15 minutes) instead of trusting `occ status`, which already answers while the upgrade is still running.
 8. After a restart, or when run with `-e run_repair=true`, runs `maintenance:repair --include-expensive` and `db:add-missing-indices`.
 9. Applies Nextcloud settings, changing each one only if it differs from the current value:
    - `config:system` settings from the `nextcloud_system_config` variable (override it in your inventory to change them): maintenance window starting at 01:00, no demo files for new users, and `overwrite.cli.url`

@@ -15,23 +15,8 @@
         reboot_timeout: 600
 
     # nextcloud-stack.service is enabled, so systemd starts the stack at boot.
-    - name: Wait for Nextcloud container to be healthy
-      command: docker inspect --format='{{ '{{.State.Health.Status}}' }}' nextcloud-app
-      register: health_check
-      until: health_check.stdout == "healthy"
-      retries: 60
-      delay: 5
-      changed_when: false
-
-    - name: Wait for Nextcloud to be fully installed
-      command: /usr/local/bin/nextcloud-occ status --output=json
-      register: nextcloud_status
-      until: >
-        nextcloud_status.rc == 0 and
-        (nextcloud_status.stdout | from_json).installed == true
-      retries: 30
-      delay: 5
-      changed_when: false
+    - name: Wait for Nextcloud to finish starting (copying files, upgrading)
+      include_tasks: tasks/wait_nextcloud.yml
 
     - name: Show stack status
       command: docker-compose ps

@@ -167,23 +167,10 @@
         state: started
         daemon_reload: yes
 
-    - name: Wait for Nextcloud container to be healthy
-      command: docker inspect --format='{{ '{{.State.Health.Status}}' }}' nextcloud-app
-      register: health_check
-      until: health_check.stdout == "healthy"
-      retries: 60
-      delay: 5
-      changed_when: false
-
-    - name: Wait for Nextcloud to be fully installed
-      command: "{{ occ }} status --output=json"
-      register: nextcloud_status
-      until: >
-        nextcloud_status.rc == 0 and
-        (nextcloud_status.stdout | from_json).installed == true
-      retries: 30
-      delay: 5
-      changed_when: false
+    - name: Wait for Nextcloud to finish starting
+      include_tasks: tasks/wait_nextcloud.yml
+      vars:
+        warn_maintenance: false  # the backup was taken in maintenance mode; it is switched off below
 
     # The backup was taken in maintenance mode, so config.php says maintenance is on.
     - name: Disable Nextcloud maintenance mode

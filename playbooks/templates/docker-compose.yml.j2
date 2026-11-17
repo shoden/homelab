@@ -66,11 +66,14 @@ services:
       redis:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "su", "-s", "/bin/bash", "www-data", "-c", "php /var/www/html/occ status"]
+      # Healthy only once Apache serves status.php. The image starts Apache after it has copied the new
+      # code and run `occ upgrade` (minutes after an image bump), whereas `occ status` already works
+      # before that. start_period covers a long upgrade without counting it as a failure.
+      test: ["CMD", "curl", "-fsS", "-o", "/dev/null", "http://localhost/status.php"]
       interval: 10s
       timeout: 5s
       retries: 20
-      start_period: 10s
+      start_period: 600s
     networks:
       - nextcloud-network
   nginx:

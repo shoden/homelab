@@ -155,33 +155,12 @@
         dest: /usr/local/bin/nextcloud-occ
         mode: '0755'
 
-    - name: Wait for Nextcloud container to be healthy
-      shell: docker inspect --format='{{"{{.State.Health.Status}}"}}' nextcloud-app
-      register: health_check
-      until: health_check.stdout == "healthy"
-      retries: 60
-      delay: 5
-      changed_when: false
-
-    - name: Wait for Nextcloud to be fully installed
-      command: /usr/local/bin/nextcloud-occ status --output=json
-      register: nextcloud_status
-      until: >
-        nextcloud_status.rc == 0 and
-        (nextcloud_status.stdout | from_json).installed == true
-      retries: 30
-      delay: 5
-      changed_when: false
+    - name: Wait for Nextcloud to finish starting (copying files, upgrading)
+      include_tasks: tasks/wait_nextcloud.yml
 
     # Slow on large instances: only after a restart (e.g. image upgrade) or with -e run_repair=true
-    - name: Run Nextcloud repair including expensive steps (adds missing MIME types)
-      command: /usr/local/bin/nextcloud-occ maintenance:repair --include-expensive
-      failed_when: false
-      when: stack_config_changed | bool or run_repair | bool
-
-    - name: Add Nextcloud missing database indices
-      command: /usr/local/bin/nextcloud-occ db:add-missing-indices
-      failed_when: false
+    - name: Repair Nextcloud and add missing database indices
+      include_tasks: tasks/repair_nextcloud.yml
       when: stack_config_changed | bool or run_repair | bool
 
     - name: Read current Nextcloud system config

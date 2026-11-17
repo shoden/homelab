@@ -1,0 +1,28 @@
+---
+# Wait until Nextcloud really serves requests. Included by setup.yml, reboot.yml and restore.yml.
+#
+# After the container starts, the image's entrypoint first copies the new Nextcloud code into place and
+# runs `occ upgrade`, and only then starts Apache. `occ status` already works (on half-copied code)
+# while that is going on, so neither it nor a plain "container is healthy" can tell the stack is ready.
+# status.php answers only once Apache is up, i.e. after the upgrade has finished.
+- name: Wait until Nextcloud serves requests (the image may still be copying files or upgrading)
+  command: docker exec nextcloud-app curl -fsS http://localhost/status.php
+  register: nextcloud_status_page
+  until: >
+    nextcloud_status_page.rc == 0 and
+    (nextcloud_status_page.stdout | from_json).installed and
+    not (nextcloud_status_page.stdout | from_json).needsDbUpgrade
+  retries: 180  # 15 minutes: a major upgrade on a small host takes a few
+  delay: 5
+  changed_when: false
+
+- name: Remember the Nextcloud status
+  set_fact:
+    nextcloud_ready: "{{ nextcloud_status_page.stdout | from_json }}"
+
+- name: Warn if Nextcloud is in maintenance mode
+  debug:
+    msg:
+      - "WARNING: Nextcloud is in maintenance mode, so users cannot use it."
+      - "If nobody put it there on purpose, switch it off with: nextcloud-occ maintenance:mode --off"
+  when: nextcloud_ready.maintenance and (warn_maintenance | default(true))
