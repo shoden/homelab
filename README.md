@@ -247,6 +247,8 @@ Configuration is in `renovate.json`:
 1. Create a fine-grained personal access token (GitHub → Settings → Developer settings), limited to this repository, with *Read and write* for **Contents**, **Pull requests**, **Issues** and **Workflows**, and *Read* for **Metadata**.
 2. Save it as a repository secret named `RENOVATE_TOKEN` (repository → Settings → Secrets and variables → Actions).
 
+**Commit author:** Renovate's commits are authored as `Renovate Bot <your-github-user>@users.noreply.github.com` instead of Renovate's default, a Mend-owned address that triggers a warning. To use another author, set the repository variable `RENOVATE_GIT_AUTHOR` (Settings → Secrets and variables → Actions → **Variables**), for example `Renovate Bot <you@example.com>`. Renovate doesn't sign its commits, so GitHub shows them as *Unverified* either way.
+
 **Running it yourself** (needs Docker):
 
 ```bash
