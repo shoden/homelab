@@ -14,6 +14,7 @@ Homelab: a flat (no roles) Ansible project for self-hosted services. It currentl
 ./run.sh restore.yml -e backup=latest    # restore a backup (without -e backup it lists them); asks for confirmation
 ./run.sh reboot.yml      # stop the stack, reboot the host and wait for Nextcloud to be healthy (stack starts at boot via systemd)
 ./run.sh shutdown.yml    # stop the stack via systemd and power off the host
+./run.sh maintenance_on.yml / maintenance_off.yml    # switch Nextcloud maintenance mode on / off (idempotent)
 ./run.sh setup.yml --check --diff    # dry run
 ./renovate.sh --local     # dry run of Renovate in Docker: shows which image updates it would propose
 ansible-playbook playbooks/setup.yml --syntax-check

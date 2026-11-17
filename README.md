@@ -83,6 +83,8 @@ Setting values flow like this: Ansible variables → `playbooks/templates/env.j2
 ./run.sh setup.yml       # deploy or update the stack
 ./run.sh reboot.yml      # stop the stack, reboot the host, wait until Nextcloud is healthy again
 ./run.sh shutdown.yml    # stop the stack gracefully and power off the host
+./run.sh maintenance_on.yml    # put Nextcloud in maintenance mode (users see a maintenance page)
+./run.sh maintenance_off.yml   # take it out of maintenance mode
 ```
 
 You can also run them directly:

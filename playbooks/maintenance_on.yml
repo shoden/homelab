@@ -1,0 +1,31 @@
+---
+# Put Nextcloud in maintenance mode: users see a maintenance page and sync clients wait.
+# Switch it off again with: ./run.sh maintenance_off.yml
+- name: Switch Nextcloud maintenance mode on
+  hosts: nextcloud
+  become: yes
+  vars:
+    occ: docker exec -u www-data nextcloud-app php occ
+
+  tasks:
+    - name: Check the Nextcloud container is running
+      command: docker inspect --format='{{ '{{.State.Running}}' }}' nextcloud-app
+      register: running
+      changed_when: false
+      failed_when: running.stdout != 'true'
+
+    - name: Enable maintenance mode
+      command: "{{ occ }} maintenance:mode --on"
+      register: maintenance_on
+      changed_when: "'already' not in maintenance_on.stdout"
+
+    - name: Read the maintenance mode
+      command: "{{ occ }} maintenance:mode"
+      register: maintenance_state
+      changed_when: false
+
+    - name: Maintenance mode status
+      debug:
+        msg:
+          - "{{ maintenance_state.stdout }}."
+          - "Users cannot use Nextcloud until you switch it off: ./run.sh maintenance_off.yml"
