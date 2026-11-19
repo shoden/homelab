@@ -203,7 +203,7 @@
 
     - name: Display deployment information
       debug:
-        msg: "{{ lines + proxy_hint }}"
+        msg: "{{ lines }}"
       vars:
         lines:
           - "Nextcloud ({{ stack_env }}) has been deployed successfully!"
@@ -213,9 +213,3 @@
           - ""
           - "To run occ commands, use: {{ occ_helper | basename }} <command>"
           - "Example: {{ occ_helper | basename }} maintenance:mode --on"
-        proxy_hint: >-
-          {{ [
-            "",
-            "This environment has no proxy of its own. In the Nginx Proxy Manager of the prod stack add a proxy host:",
-            "  domain " ~ nextcloud_domain ~ "  ->  http://" ~ ansible_host ~ ":" ~ nextcloud_host_port ~ "  (Websockets on, Force SSL, certificate for that domain)"
-          ] if (nextcloud_host_port | string | length > 0) else [] }}

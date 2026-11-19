@@ -5,3 +5,5 @@
 mysql_root_password: CHANGE_ME
 mysql_password: CHANGE_ME
 nextcloud_admin_password: CHANGE_ME
+nginx_admin_email: CHANGE_ME@example.com   # initial Nginx Proxy Manager admin login
+nginx_admin_password: CHANGE_ME

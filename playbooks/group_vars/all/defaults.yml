@@ -5,25 +5,23 @@
 
 # --- Environments -------------------------------------------------------------------------------
 # Every inventory (inventory/prod, inventory/dev, ...) sets `stack_env` (REQUIRED, no default on purpose).
-# Several environments can live on the same host: everything that has to be unique derives from
-# stack_name, so they don't clash. prod keeps the original names (nextcloud, nextcloud-app, ...).
-stack_name: "{{ 'nextcloud' if stack_env == 'prod' else 'nextcloud-' ~ stack_env }}"
+# It labels the environment (messages, backup manifest); it does NOT change any name. Each environment
+# runs on its own host, so every one uses the same fixed names (nextcloud, nextcloud-app, /opt/nextcloud, ...).
+stack_name: nextcloud
 container_app: "{{ stack_name }}-app"
 container_db: "{{ stack_name }}-mariadb"
 container_redis: "{{ stack_name }}-redis"
 container_proxy: "{{ stack_name }}-proxy"
 container_netdata: "{{ stack_name }}-netdata"
 stack_service: "{{ stack_name }}-stack"                # systemd unit
-occ_helper: "/usr/local/bin/{{ stack_name }}-occ"      # prod: nextcloud-occ
+occ_helper: "/usr/local/bin/{{ stack_name }}-occ"   
 occ: "docker exec -u www-data {{ container_app }} php occ"
 
-# The reverse proxy (Nginx Proxy Manager: ports 80, 443, 81) and Netdata (port 19999) can only exist
-# once per host, so by default only prod runs them. Other environments are reached through prod's proxy.
-with_proxy: "{{ stack_env == 'prod' }}"
-with_netdata: "{{ stack_env == 'prod' }}"
-# Host port that publishes Nextcloud's port 80, so another stack's proxy can forward to <host>:<port>.
-# Empty = not published (prod: its proxy reaches it over the Docker network). Must be unique on the host.
-nextcloud_host_port: ""
+# The reverse proxy (Nginx Proxy Manager: ports 80, 443, 81) and Netdata (port 19999) are deployed in every
+# environment. Each environment is meant to run on its own host: two stacks that both enable them cannot share
+# one (the ports clash). Set either to false in an inventory to leave it out.
+with_proxy: true
+with_netdata: true
 
 nextcloud_base_dir: "/opt/{{ stack_name }}"
 nextcloud_data_dir: "{{ nextcloud_base_dir }}/app"

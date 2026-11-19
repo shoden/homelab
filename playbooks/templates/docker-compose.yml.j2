@@ -74,10 +74,6 @@ services:
       timeout: 5s
       retries: 20
       start_period: 600s
-{% if nextcloud_host_port | string | length > 0 %}
-    ports:
-      - '{{ nextcloud_host_port }}:80'
-{% endif %}
     networks:
       - nextcloud-network
 {% if with_proxy | bool %}
