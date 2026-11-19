@@ -61,7 +61,6 @@ Defaults are in `playbooks/group_vars/all/defaults.yml`. Override any of them in
 |---|---|---|
 | `stack_env` | **required** | the environment this inventory is: `prod`, `dev`, ... (see below) |
 | `nextcloud_domain` | **required** | public domain, used for trusted domains and `overwrite.cli.url` |
-| `nginx_admin_email` | **required in prod** | initial Nginx Proxy Manager admin login (only environments that run the proxy) |
 | `nextcloud_host_port` | empty | host port that publishes Nextcloud, for an environment reached through another one's proxy (dev: `8081`). Must be unique on the host |
 | `timezone` | `UTC` | e.g. `Europe/Madrid` |
 | `nextcloud_base_dir` | `/opt/<stack name>` (prod: `/opt/nextcloud`) | data directories are created under it: `app/`, `db/`, `redis/`, `nginx-proxy-manager/`, `netdata/` |
@@ -76,6 +75,7 @@ Defaults are in `playbooks/group_vars/all/defaults.yml`. Override any of them in
 | `mysql_root_password` | MariaDB root |
 | `mysql_password` | MariaDB `nextcloud` user (also used as the Redis password) |
 | `nextcloud_admin_password` | Nextcloud admin user |
+| `nginx_admin_email` | Nginx Proxy Manager initial admin login (only environments that run the proxy) |
 | `nginx_admin_password` | Nginx Proxy Manager initial admin (only environments that run the proxy) |
 
 Setting values flow like this: Ansible variables → `playbooks/templates/env.j2` (rendered to `<base dir>/.env`, mode 0600) → `${VAR}` references in `playbooks/templates/docker-compose.yml.j2`.
