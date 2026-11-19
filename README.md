@@ -44,7 +44,7 @@ The repository contains no site-specific values. Your hosts, domains and passwor
 mkdir inventory && cp -r inventory.example/prod inventory/prod
 $EDITOR inventory/prod/hosts.ini                          # host, address, SSH user and key
 $EDITOR inventory/prod/group_vars/nextcloud/main.yml      # domain, admin email, timezone
-$EDITOR inventory/prod/group_vars/nextcloud/vault.yml     # passwords, e.g. openssl rand -base64 24 | tr -d '/+='
+$EDITOR inventory/prod/group_vars/nextcloud/vault.yml     # passwords, e.g. openssl rand -base64 24 | tr -dc 'A-Za-z0-9'
 ansible-vault encrypt inventory/prod/group_vars/nextcloud/vault.yml
 echo 'your vault password' > .vault_pass && chmod 600 .vault_pass   # optional, otherwise you are prompted
 ```

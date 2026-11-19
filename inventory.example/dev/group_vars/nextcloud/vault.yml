@@ -1,7 +1,7 @@
 ---
 # Secrets of this environment: use different values from prod. After filling in, encrypt this file:
 #   ansible-vault encrypt inventory/dev/group_vars/nextcloud/vault.yml
-# Generate a random password value with:  openssl rand -base64 24 | tr -d '/+='
+# Generate a random password value with:  openssl rand -base64 24 | tr -dc 'A-Za-z0-9'
 mysql_root_password: CHANGE_ME
 mysql_password: CHANGE_ME
 nextcloud_admin_password: CHANGE_ME

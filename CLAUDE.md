@@ -42,6 +42,6 @@ On the target host, `<stack name>-occ <args>` (prod: `nextcloud-occ`, installed 
 
 ## Known quirks
 
-- `REDIS_PASSWORD` in `playbooks/templates/env.j2` reuses `mysql_password`.
+- `REDIS_PASSWORD` in `playbooks/templates/env.j2` reuses `mysql_password`. Passwords land unquoted in `.env`, the compose `redis-server --requirepass` command and the PHP session URL (`?auth=`), so special characters (`< > + = ! $ # ' "`, spaces) truncate or corrupt them (a `<` once cut Redis's password to 10 characters and Nextcloud answered 500 with `WRONGPASS`). A `pre_tasks` assert in `deploy.yml` therefore only accepts `[A-Za-z0-9._-]` (not starting with `-`) for `mysql_password`, the one Redis reuses. The other passwords only travel through `.env`/compose `environment:` into container variables, so they may use most printable characters except space, `$ # ' " `` ` `` and `\`; keep the asserts in sync if you add a password.
 - NPM's `INITIAL_ADMIN_EMAIL`/`INITIAL_ADMIN_PASSWORD` only apply on NPM's first start (empty DB); changing them later has no effect.
 - `nextcloud_port` is written to `.env` but not used by the compose file.

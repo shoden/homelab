@@ -30,6 +30,36 @@
       loop: "{{ ['nextcloud_domain', 'mysql_root_password', 'mysql_password', 'nextcloud_admin_password'] + (['nginx_admin_email', 'nginx_admin_password'] if with_proxy | bool else []) }}"
       tags: always
 
+    # mysql_password is also the Redis password (see env.j2). It ends up unquoted in the Redis
+    # `--requirepass` command line and in the PHP session URL (`tcp://redis:6379?auth=...`), so characters
+    # such as < > + = ! $ # ' " or spaces silently truncate or corrupt it (Redis then rejects the app's
+    # password and Nextcloud answers 500). Only letters, digits, `_`, `.` and `-` are allowed, and it
+    # can't start with `-` (it would be read as an option).
+    - name: Check mysql_password (also the Redis password) only uses safe characters
+      assert:
+        that:
+          - mysql_password | string is match('^[A-Za-z0-9][A-Za-z0-9._-]*$')
+        fail_msg: >-
+          'mysql_password' is also the Redis password and breaks Redis or the session URL with special
+          characters. Use only letters, digits, '_', '.' and '-' (starting with a letter or digit), e.g.
+          openssl rand -base64 24 | tr -dc 'A-Za-z0-9'
+        quiet: true
+      tags: always
+
+    # The other passwords only travel through .env and compose `environment:` into container variables
+    # (no command line, no URL), so most printable characters work. Excluded: $ (compose interpolation),
+    # # ' " ` \ (parsed by .env), and spaces. Only the variable name is reported, never the value.
+    - name: Check the other passwords do not use characters that break .env
+      assert:
+        that:
+          - lookup('vars', item, default='') | string is match(env_safe_password)
+        fail_msg: "'{{ item }}' contains a character that breaks the .env file: space, $ # ' \" ` or a backslash. Other special characters are fine."
+        quiet: true
+      vars:
+        env_safe_password: '^[A-Za-z0-9!%&()*+,./:;<=>?@^_~\[\]{}|-]+$'
+      loop: "{{ ['mysql_root_password', 'nextcloud_admin_password'] + (['nginx_admin_password'] if with_proxy | bool else []) }}"
+      tags: always
+
   tasks:
     - name: Install required packages
       apt:
