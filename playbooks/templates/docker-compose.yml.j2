@@ -78,7 +78,7 @@ services:
       - nextcloud-network
 {% if with_proxy | bool %}
   nginx:
-    image: 'jc21/nginx-proxy-manager:2.17.0'
+    image: 'jc21/nginx-proxy-manager:2.17.1'
     container_name: {{ container_proxy }}
     restart: unless-stopped
     ports:
@@ -109,7 +109,7 @@ services:
 {% if with_netdata | bool %}
 
   netdata:
-    image: netdata/netdata:v2.12.3
+    image: netdata/netdata:v2.13.0
     container_name: {{ container_netdata }}
     restart: unless-stopped
     pid: host
