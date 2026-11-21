@@ -6,7 +6,9 @@
 # one with fzf, if fzf and yq are installed. Without an environment you pick one the same way, unless
 # inventory/ has only one.
 # INVENTORY=/path/to/inventory uses that inventory instead of inventory/<environment>.
-# Vault password: ./.vault_pass if present, otherwise you are prompted.
+# Credentials: secretspec.toml. The playbook runs inside `secretspec run --profile <environment> --`, so the
+# secrets of that environment's profile reach Ansible as environment variables. With INVENTORY set, the profile
+# is SECRETSPEC_PROFILE, or the name of the inventory directory.
 set -euo pipefail
 cd "$(dirname "$0")"
 
@@ -29,8 +31,10 @@ require_picker() {
   fi
 }
 
-vault_args=(--ask-vault-pass)
-[ -f .vault_pass ] && vault_args=(--vault-password-file .vault_pass)
+if ! command -v secretspec >/dev/null 2>&1; then
+  echo "Error: secretspec is not installed (credentials come from it, see secretspec.toml and https://secretspec.dev)." >&2
+  exit 1
+fi
 
 # ---- playbook -------------------------------------------------------------------------------------
 if [ $# -eq 0 ] || [[ "$1" == -* ]]; then
@@ -92,6 +96,7 @@ else
   inventory="inventory/$env"
   where="environment '$env'"
 fi
+profile=${env:-${SECRETSPEC_PROFILE:-$(basename "$inventory")}}
 
 echo "Running playbook $playbook on $where..."
-ansible-playbook -i "$inventory" "${vault_args[@]}" "$playbook" "$@"
+secretspec run --profile "$profile" -- ansible-playbook -i "$inventory" "$playbook" "$@"

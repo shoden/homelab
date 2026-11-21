@@ -32,24 +32,24 @@ doc/                     extra documentation
 ## Prerequisites
 
 - Ansible 2.19+ on the control machine
+- [SecretSpec](https://secretspec.dev) on the control machine: all credentials (users, passwords, the NPM admin email) live in it, not in the repo
 - SSH access to the target host with sudo rights
 - Ubuntu/Debian on the target. The playbook installs `docker.io` and `docker-compose`.
 - A domain at a DNS provider, with a subdomain per application (Nextcloud, Nginx Proxy Manager, Netdata) created beforehand and pointing at the host. See [HTTPS / Nginx Proxy Manager](#https--nginx-proxy-manager). Certificates are obtained via a DNS challenge.
 
 ## Setup (once)
 
-The repository contains no site-specific values. Your hosts, domains and passwords live in an `inventory/` directory that is gitignored, with one subdirectory per environment (see [Environments](#environments-prod-and-dev)). Start with prod:
+The repository contains no site-specific values. Your hosts and domains live in an `inventory/` directory that is gitignored, and your credentials in SecretSpec (see [Secrets](#secrets-secretspec)). The inventory has, one subdirectory per environment (see [Environments](#environments-prod-and-dev)). Start with prod:
 
 ```bash
 mkdir inventory && cp -r inventory.example/prod inventory/prod
 $EDITOR inventory/prod/hosts.ini                          # host, address, SSH user and key
-$EDITOR inventory/prod/group_vars/nextcloud/main.yml      # domain, admin email, timezone
-$EDITOR inventory/prod/group_vars/nextcloud/vault.yml     # passwords, e.g. openssl rand -base64 24 | tr -dc 'A-Za-z0-9'
-ansible-vault encrypt inventory/prod/group_vars/nextcloud/vault.yml
-echo 'your vault password' > .vault_pass && chmod 600 .vault_pass   # optional, otherwise you are prompted
+$EDITOR inventory/prod/group_vars/nextcloud/main.yml      # domain, timezone
+secretspec config global init --provider 'kdbx:/path/to/homelab.kdbx'   # once: where SecretSpec keeps the values (here a KeePass file; see Secrets)
+secretspec check --profile prod                           # asks for every missing secret (passwords: openssl rand -base64 24 | tr -dc 'A-Za-z0-9')
 ```
 
-Then deploy with `./run.sh deploy.yml prod`. Before touching the host, the playbook checks that the environment is set and that the domain and all passwords are set and are not still the `CHANGE_ME` / `example.com` placeholders.
+Then deploy with `./run.sh deploy.yml prod`. Before touching the host, the playbook checks that the environment is set, that the domain and all credentials are set and are not placeholders, and that the passwords only use characters that are safe in `.env`, Redis and the session URL.
 
 To keep your configuration outside this repository, put the same layout anywhere (for example in a private repo) and run `INVENTORY=~/infra/mysite/prod ./run.sh deploy.yml`.
 
@@ -63,19 +63,41 @@ Defaults are in `playbooks/group_vars/all/defaults.yml`. Override any of them in
 | `nextcloud_domain` | **required** | public domain, used for trusted domains and `overwrite.cli.url` |
 | `timezone` | `UTC` | e.g. `Europe/Madrid` |
 | `nextcloud_base_dir` | `/opt/<stack name>` (prod: `/opt/nextcloud`) | data directories are created under it: `app/`, `db/`, `redis/`, `nginx-proxy-manager/`, `netdata/` |
-| `nextcloud_admin_user` | `admin` | |
 | `clean_install` | `false` | `true` **deletes the base directory and all data** before reinstalling |
 | `run_repair` | `false` | also run the slow repair and index steps on a run that doesn't restart the stack |
 
-### Secrets (`vault.yml`)
+### Secrets (SecretSpec)
 
-| Variable | Used for |
-|---|---|
-| `mysql_root_password` | MariaDB root |
-| `mysql_password` | MariaDB `nextcloud` user (also used as the Redis password) |
-| `nextcloud_admin_password` | Nextcloud admin user |
-| `nginx_admin_email` | Nginx Proxy Manager initial admin login (only environments that run the proxy) |
-| `nginx_admin_password` | Nginx Proxy Manager initial admin (only environments that run the proxy) |
+Credentials are declared in `secretspec.toml` (names and descriptions only) and stored by your SecretSpec provider, one set per profile: the profile is the environment (`prod`, `dev`). `./run.sh` runs Ansible inside `secretspec run --profile <environment> --`, which passes them as environment variables, and `playbooks/group_vars/all/defaults.yml` maps them to the Ansible variables.
+
+| Secret | Ansible variable | Used for |
+|---|---|---|
+| `MYSQL_USER` (default `nextcloud`) | `mysql_user` | MariaDB user for Nextcloud and NPM |
+| `MYSQL_PASSWORD` | `mysql_password` | that MariaDB user (also the Redis password: letters and digits only) |
+| `MYSQL_ROOT_PASSWORD` | `mysql_root_password` | MariaDB root |
+| `NEXTCLOUD_ADMIN_USER` (default `admin`) | `nextcloud_admin_user` | Nextcloud admin user |
+| `NEXTCLOUD_ADMIN_PASSWORD` | `nextcloud_admin_password` | Nextcloud admin password |
+| `NGINX_ADMIN_EMAIL` | `nginx_admin_email` | Nginx Proxy Manager initial admin login |
+| `NGINX_ADMIN_PASSWORD` | `nginx_admin_password` | Nginx Proxy Manager initial admin password |
+
+```bash
+secretspec check --profile dev                      # lists what is missing and asks for it
+secretspec set MYSQL_PASSWORD --profile dev         # set or change one (prompts, nothing in your shell history)
+secretspec get NGINX_ADMIN_EMAIL --profile prod     # read one
+```
+
+**KeePass (kdbx) provider.** The provider is per user, not per repo, so the file path never goes in `secretspec.toml`. Set it once in your user-global config:
+
+```bash
+secretspec config global init --provider 'kdbx:/home/you/secrets/homelab.kdbx'
+# with a key file as well as (or instead of) the master password:
+secretspec config global init --provider 'kdbx:/home/you/secrets/homelab.kdbx?keyfile=/home/you/secrets/homelab.key'
+secretspec config global show                        # check what was saved
+```
+
+The master password is read from the `SECRETSPEC_KDBX_PASSWORD` environment variable (export it for the session, never put it in a file in the repo). To use another provider for one command, `--provider` or `SECRETSPEC_PROVIDER` overrides the global one.
+
+Use different values in `dev` and `prod`. Run plain `ansible-playbook` the same way: `secretspec run --profile dev -- ansible-playbook -i inventory/dev playbooks/deploy.yml`.
 
 Setting values flow like this: Ansible variables → `playbooks/templates/env.j2` (rendered to `<base dir>/.env`, mode 0600) → `${VAR}` references in `playbooks/templates/docker-compose.yml.j2`.
 
@@ -91,7 +113,7 @@ Environments (`prod`, `dev`, ...) let you try a change (a Nextcloud major upgrad
 
 ### Add a dev environment
 
-1. `mkdir -p inventory && cp -r inventory.example/dev inventory/dev`, then edit it: the dev host in `hosts.ini`, `stack_env: dev`, its own domain (for example `dev.<your domain>`), and **different passwords from prod** (including `nginx_admin_email` / `nginx_admin_password`). Encrypt `vault.yml` as for prod.
+1. `mkdir -p inventory && cp -r inventory.example/dev inventory/dev`, then edit it: the dev host in `hosts.ini`, `stack_env: dev`, its own domain (for example `dev.<your domain>`), then run `secretspec check --profile dev` and enter **different credentials from prod** (a new password for each secret, including the NPM admin email and password).
 2. Create the DNS record for the dev domain, as for the prod subdomains.
 3. `./run.sh deploy.yml dev`
 4. Configure the dev Nginx Proxy Manager as described in [HTTPS](#https--nginx-proxy-manager).
@@ -126,10 +148,10 @@ Dev starts empty. To rehearse an **upgrade**, first deploy the version prod runs
 You can also run them directly, naming the inventory of the environment:
 
 ```bash
-ansible-playbook -i inventory/prod --ask-vault-pass playbooks/deploy.yml               # deploy prod
-ansible-playbook -i inventory/dev --ask-vault-pass playbooks/deploy.yml --check --diff   # dry run on dev
-ansible-playbook -i inventory/dev --ask-vault-pass playbooks/deploy.yml -e clean_install=true   # wipe dev and reinstall
-ansible-playbook -i inventory/prod --ask-vault-pass playbooks/deploy.yml -e run_repair=true     # also run the slow repair/index steps
+secretspec run --profile prod -- ansible-playbook -i inventory/prod playbooks/deploy.yml               # deploy prod
+secretspec run --profile dev -- ansible-playbook -i inventory/dev playbooks/deploy.yml --check --diff   # dry run on dev
+secretspec run --profile dev -- ansible-playbook -i inventory/dev playbooks/deploy.yml -e clean_install=true   # wipe dev and reinstall
+secretspec run --profile prod -- ansible-playbook -i inventory/prod playbooks/deploy.yml -e run_repair=true     # also run the slow repair/index steps
 ```
 
 `./run.sh` also accepts extra arguments after the environment, e.g. `./run.sh deploy.yml dev -e run_repair=true`. Run it without a playbook (`./run.sh`, or just options like `./run.sh --check --diff`) and, if [fzf](https://github.com/junegunn/fzf) and [yq](https://github.com/mikefarah/yq) are installed, you pick the playbook from a list that shows each playbook's name and description (the `name:` of its first play, e.g. `deploy - Deploy Nextcloud stack`), and then the environment. You can type to filter.
@@ -246,12 +268,12 @@ nextcloud-occ maintenance:mode --on
 - **Retention:** after each successful backup, only the newest `backup_keep` (default 3, minimum 1) are kept. A backup that fails is deleted and never counts. Change the defaults in `inventory/<environment>/group_vars/nextcloud/main.yml` or with `-e`.
 - **User files** (`app/data`) are **not** included by default: they can be many GB and an upgrade doesn't touch them. Add `-e backup_include_data=true` to include them. If the backup lacks them, a restore leaves your current files in place, so run `nextcloud-occ files:scan --all` afterwards if files changed since the backup (or restore with `-e restore_files_scan=true`).
 - **Where it lives:** `backup_dir` (`/var/backups/nextcloud` by default) is outside the base directory, so `clean_install` doesn't delete it. It is still on the same disk as the data, so it protects against a bad upgrade or a mistake, **not** against the disk dying. Copy the backups elsewhere, for example `rsync -a --rsync-path="sudo rsync" <user>@<host>:/var/backups/nextcloud/ /somewhere/safe/`.
-- **Scheduling:** to run it daily from the machine you deploy from, add a cron line such as `0 3 * * * cd /path/to/homelab && ./run.sh backup.yml prod` (it needs `.vault_pass`).
+- **Scheduling:** to run it daily from the machine you deploy from, add a cron line such as `0 3 * * * cd /path/to/homelab && ./run.sh backup.yml prod` (SecretSpec must be able to unlock its provider without you, which a keyring usually cannot in cron).
 
 **Restoring** replaces the current database, Nextcloud code and config, and proxy data with the backup, **and** the `.env` and `docker-compose.yml` of that moment, so the image versions match the data. It asks you to type the backup name to confirm (skip with `-e confirm_restore=true`). Before replacing anything it takes a safety backup of the current state, named `<timestamp>-pre-restore`, which is never deleted automatically (skip with `-e pre_restore_backup=false`, for example if the stack is too broken to back up).
 
 - The stack is down during the restore. The database is re-created from the dump, then Nextcloud starts, maintenance mode is turned off and sync clients are told the data was restored.
-- **Passwords** come back as they were at the time of the backup (they are in the `.env` and `config.php`). If you changed a password since, update `vault.yml` to match, or change it again afterwards.
+- **Passwords** come back as they were at the time of the backup (they are in the `.env` and `config.php`). If you changed a password since, update the value in SecretSpec to match, or change it again afterwards.
 - **On a new host:** run `./run.sh deploy.yml prod` first (it installs Docker and the service), copy the backup into `/var/backups/nextcloud/`, then run `restore.yml`. A backup can only be restored into the environment it was made in.
 
 ## Updating
@@ -295,7 +317,7 @@ RENOVATE_TOKEN=... ./renovate.sh   # open/update the PRs on GitHub from your mac
 ## Security notes
 
 - `<base dir>/.env` on the host contains every secret and has mode 0600.
-- Secrets live only in the Vault-encrypted `inventory/<environment>/group_vars/nextcloud/vault.yml`. `inventory/` and `.vault_pass` are gitignored, so never commit them unencrypted.
-- Passwords set in `vault.yml` only take effect when MariaDB, Nextcloud and Nginx Proxy Manager first initialise. Changing one later does not change the live account. Change it in the service as well (`ALTER USER`, `nextcloud-occ user:resetpassword`, the NPM UI).
+- Secrets live only in your SecretSpec provider (`secretspec.toml` holds names, never values). `inventory/` is gitignored and holds no credentials.
+- Passwords set in SecretSpec only take effect when MariaDB, Nextcloud and Nginx Proxy Manager first initialise. Changing one later does not change the live account. Change it in the service as well (`ALTER USER`, `nextcloud-occ user:resetpassword`, the NPM UI).
 - Ports 81 (proxy admin) and 19999 (Netdata) are also published directly on the host over plain HTTP. Port 81 is needed for the first login, before any proxy host exists. Once the subdomains work, block both ports with a firewall so the applications are only reachable over HTTPS.
 - Netdata has no login of its own. Anyone who can reach `https://netdata.example.com` can see your host's metrics. Restrict it with an **Access List** in NPM (Hosts → Access Lists) and attach it to the Netdata proxy host.

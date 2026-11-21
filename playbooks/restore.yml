@@ -199,5 +199,5 @@
       debug:
         msg:
           - "Restored backup {{ restore_name }} (Nextcloud {{ manifest.nextcloud_version }})."
-          - "The passwords in .env / config.php are the ones from that moment: keep your vault consistent with them."
+          - "The passwords in .env / config.php are the ones from that moment: keep your SecretSpec values consistent with them."
           - "{{ 'Rescanned the user files.' if restore_files_scan | bool else 'If user files changed since the backup, run: {{ occ_helper | basename }} files:scan --all' }}"

@@ -33,13 +33,23 @@ netdata_data_dir: "{{ nextcloud_base_dir }}/netdata"
 timezone: UTC
 
 mysql_database: nextcloud
-mysql_user: nextcloud
-nextcloud_admin_user: admin
+
+# Credentials come from SecretSpec (secretspec.toml), which `./run.sh` injects as environment variables
+# (`secretspec run --profile <environment> -- ansible-playbook ...`). lookup('env') runs on the machine you
+# deploy from. A missing secret ends up empty and the pre_tasks asserts in deploy.yml stop the run.
+# Without SecretSpec the two user names fall back to their usual values.
+mysql_user: "{{ lookup('ansible.builtin.env', 'MYSQL_USER') | default('nextcloud', true) }}"
+mysql_password: "{{ lookup('ansible.builtin.env', 'MYSQL_PASSWORD') }}"
+mysql_root_password: "{{ lookup('ansible.builtin.env', 'MYSQL_ROOT_PASSWORD') }}"
+nextcloud_admin_user: "{{ lookup('ansible.builtin.env', 'NEXTCLOUD_ADMIN_USER') | default('admin', true) }}"
+nextcloud_admin_password: "{{ lookup('ansible.builtin.env', 'NEXTCLOUD_ADMIN_PASSWORD') }}"
+nginx_admin_email: "{{ lookup('ansible.builtin.env', 'NGINX_ADMIN_EMAIL') }}"
+nginx_admin_password: "{{ lookup('ansible.builtin.env', 'NGINX_ADMIN_PASSWORD') }}"
 nextcloud_port: 8080
 
 # Clean install: true removes all volumes and /opt/nextcloud (development only).
 # false preserves data and just updates containers/configs.
-clean_install: false
+clean_install: true
 
 # Run the slow "maintenance:repair --include-expensive" and missing-index steps
 # even when the stack was not restarted (they always run after a restart)

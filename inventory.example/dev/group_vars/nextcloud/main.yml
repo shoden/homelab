@@ -5,4 +5,3 @@ nextcloud_domain: dev.nextcloud.example.com   # public domain served by this env
 
 # Optional overrides (defaults live in playbooks/group_vars/all/defaults.yml)
 # timezone: Europe/Madrid
-# nextcloud_admin_user: admin
