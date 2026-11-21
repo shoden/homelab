@@ -48,7 +48,7 @@ nextcloud_port: 8080
 
 # Clean install: true removes all volumes and /opt/nextcloud (development only).
 # false preserves data and just updates containers/configs.
-clean_install: true
+clean_install: false
 
 # Run the slow "maintenance:repair --include-expensive" and missing-index steps
 # even when the stack was not restarted (they always run after a restart)
