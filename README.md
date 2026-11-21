@@ -72,10 +72,10 @@ Credentials are declared in `secretspec.toml` (names and descriptions only) and 
 
 | Secret | Ansible variable | Used for |
 |---|---|---|
-| `MYSQL_USER` (default `nextcloud`) | `mysql_user` | MariaDB user for Nextcloud and NPM |
+| `MYSQL_USER` | `mysql_user` | MariaDB user for Nextcloud and NPM |
 | `MYSQL_PASSWORD` | `mysql_password` | that MariaDB user (also the Redis password: letters and digits only) |
 | `MYSQL_ROOT_PASSWORD` | `mysql_root_password` | MariaDB root |
-| `NEXTCLOUD_ADMIN_USER` (default `admin`) | `nextcloud_admin_user` | Nextcloud admin user |
+| `NEXTCLOUD_ADMIN_USER` | `nextcloud_admin_user` | Nextcloud admin user |
 | `NEXTCLOUD_ADMIN_PASSWORD` | `nextcloud_admin_password` | Nextcloud admin password |
 | `NGINX_ADMIN_EMAIL` | `nginx_admin_email` | Nginx Proxy Manager initial admin login |
 | `NGINX_ADMIN_PASSWORD` | `nginx_admin_password` | Nginx Proxy Manager initial admin password |
