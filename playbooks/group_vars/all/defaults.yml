@@ -1,9 +1,29 @@
 ---
 # Project defaults. Do not put site-specific values here: override them in
-# inventory/group_vars/nextcloud/main.yml (see inventory.example/).
+# inventory/<env>/group_vars/nextcloud/main.yml (see inventory.example/).
 # group_vars/nextcloud (inventory) beats group_vars/all (here), so use that group.
 
-nextcloud_base_dir: /opt/nextcloud
+# --- Environments -------------------------------------------------------------------------------
+# Every inventory (inventory/prod, inventory/dev, ...) sets `stack_env` (REQUIRED, no default on purpose).
+# It labels the environment (messages, backup manifest); it does NOT change any name. Each environment
+# runs on its own host, so every one uses the same fixed names (nextcloud, nextcloud-app, /opt/nextcloud, ...).
+stack_name: nextcloud
+container_app: "{{ stack_name }}-app"
+container_db: "{{ stack_name }}-mariadb"
+container_redis: "{{ stack_name }}-redis"
+container_proxy: "{{ stack_name }}-proxy"
+container_netdata: "{{ stack_name }}-netdata"
+stack_service: "{{ stack_name }}-stack"                # systemd unit
+occ_helper: "/usr/local/bin/{{ stack_name }}-occ"   
+occ: "docker exec -u www-data {{ container_app }} php occ"
+
+# The reverse proxy (Nginx Proxy Manager: ports 80, 443, 81) and Netdata (port 19999) are deployed in every
+# environment. Each environment is meant to run on its own host: two stacks that both enable them cannot share
+# one (the ports clash). Set either to false in an inventory to leave it out.
+with_proxy: true
+with_netdata: true
+
+nextcloud_base_dir: "/opt/{{ stack_name }}"
 nextcloud_data_dir: "{{ nextcloud_base_dir }}/app"
 mariadb_data_dir: "{{ nextcloud_base_dir }}/db"
 redis_data_dir: "{{ nextcloud_base_dir }}/redis"
@@ -13,8 +33,37 @@ netdata_data_dir: "{{ nextcloud_base_dir }}/netdata"
 timezone: UTC
 
 mysql_database: nextcloud
-mysql_user: nextcloud
-nextcloud_admin_user: admin
+
+# Credentials come from SecretSpec (secretspec.toml), which `./run.sh` injects as environment variables
+# (`secretspec run --profile <environment> -- ansible-playbook ...`). lookup('env') runs on the machine you
+# deploy from. A missing secret ends up empty and the pre_tasks asserts in deploy.yml stop the run.
+mysql_user: "{{ lookup('ansible.builtin.env', 'MYSQL_USER') }}"
+mysql_password: "{{ lookup('ansible.builtin.env', 'MYSQL_PASSWORD') }}"
+mysql_root_password: "{{ lookup('ansible.builtin.env', 'MYSQL_ROOT_PASSWORD') }}"
+nextcloud_admin_user: "{{ lookup('ansible.builtin.env', 'NEXTCLOUD_ADMIN_USER') }}"
+nextcloud_admin_password: "{{ lookup('ansible.builtin.env', 'NEXTCLOUD_ADMIN_PASSWORD') }}"
+nginx_admin_email: "{{ lookup('ansible.builtin.env', 'NGINX_ADMIN_EMAIL') }}"
+nginx_admin_password: "{{ lookup('ansible.builtin.env', 'NGINX_ADMIN_PASSWORD') }}"
+ovh_application_key: "{{ lookup('ansible.builtin.env', 'OVH_APPLICATION_KEY') }}"
+ovh_application_secret: "{{ lookup('ansible.builtin.env', 'OVH_APPLICATION_SECRET') }}"
+ovh_consumer_key: "{{ lookup('ansible.builtin.env', 'OVH_CONSUMER_KEY') }}"
+
+# --- Nginx Proxy Manager, configured through its API by tasks/npm.yml (only when with_proxy) ------------------
+# Required in the inventory (no defaults): npm_certificate_domains (comma separated, e.g.
+# "dev.example.org,*.dev.example.org": one Let's Encrypt certificate for all of them), proxy_domain, and
+# netdata_domain (when with_netdata). nextcloud_domain is the Nextcloud proxy host.
+ovh_endpoint: ovh-eu
+# Seconds NPM waits for the DNS TXT record to propagate; empty = NPM's default
+npm_dns_propagation_seconds: ""
+npm_api: "http://127.0.0.1:81/api"
+# true shows the NPM API requests in the output, INCLUDING tokens and the OVH credentials (-e npm_debug=true)
+npm_debug: false
+# One proxy host per entry; they all use the certificate above, Force SSL, HTTP/2 and websockets
+npm_proxy_hosts:
+  - { domain: "{{ nextcloud_domain }}", host: "{{ container_app }}", port: 80 }
+  - { domain: "{{ proxy_domain }}", host: "{{ container_proxy }}", port: 81 }
+npm_proxy_hosts_netdata:
+  - { domain: "{{ netdata_domain }}", host: "{{ container_netdata }}", port: 19999 }
 nextcloud_port: 8080
 
 # Clean install: true removes all volumes and /opt/nextcloud (development only).
@@ -33,7 +82,7 @@ nextcloud_system_config:
 
 # Backups (backup.yml / restore.yml)
 # Outside nextcloud_base_dir on purpose: clean_install deletes the base directory.
-backup_dir: /var/backups/nextcloud
+backup_dir: "/var/backups/{{ stack_name }}"
 # How many completed backups to keep; older ones are removed after each new backup (minimum 1).
 backup_keep: 3
 # Also back up the user files (nextcloud_data_dir/data). Can be many GB and slow; an upgrade does not touch them.
@@ -47,5 +96,7 @@ backup_prune: true
 pre_restore_backup: true
 # Skip the typed confirmation (for non-interactive runs).
 confirm_restore: false
+# Allow restoring a backup made in another environment (it replaces this one's data and passwords).
+restore_allow_other_env: false
 # Rescan all user files after the restore. Slow on large instances; needed if files changed since the backup.
 restore_files_scan: false

@@ -6,8 +6,6 @@
 # the end. If it is interrupted, or fails (for example on half-upgraded code), Nextcloud stays in
 # maintenance mode. So restore it here, whatever happens.
 - name: Repair Nextcloud
-  vars:
-    occ: docker exec -u www-data nextcloud-app php occ
   block:
     - name: Run Nextcloud repair including expensive steps (adds missing MIME types)
       command: "{{ occ }} maintenance:repair --include-expensive"
@@ -28,7 +26,7 @@
     - name: Warn about a repair or index step that failed
       debug:
         msg:
-          - "WARNING: '{{ item.cmd | join(' ') | regex_replace('^.*php occ ', '') }}' failed (rc={{ item.rc }}). Run it by hand: nextcloud-occ {{ item.cmd | join(' ') | regex_replace('^.*php occ ', '') }}"
+          - "WARNING: '{{ item.cmd | join(' ') | regex_replace('^.*php occ ', '') }}' failed (rc={{ item.rc }}). Run it by hand: {{ occ_helper | basename }} {{ item.cmd | join(' ') | regex_replace('^.*php occ ', '') }}"
           - "{{ (item.stderr_lines | default([]))[-3:] }}"
       loop: "{{ [nextcloud_repair | default({}), nextcloud_indices | default({})] }}"
       loop_control:

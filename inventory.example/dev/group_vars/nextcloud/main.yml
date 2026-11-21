@@ -1,0 +1,14 @@
+---
+# Required
+stack_env: dev                                # the environment of this inventory (here: dev)
+nextcloud_domain: cloud.dev.example.com       # public domain served by this environment's Nginx Proxy Manager
+
+# Nginx Proxy Manager is configured by deploy.yml: one Let's Encrypt certificate (DNS challenge at OVH) for
+# these domains, comma separated, and a proxy host per domain below that uses it. The proxy hosts' domains
+# must be covered by the certificate (a wildcard covers the subdomains).
+npm_certificate_domains: "dev.example.com,*.dev.example.com"
+proxy_domain: proxy.dev.example.com           # Nginx Proxy Manager's own admin UI
+netdata_domain: netdata.dev.example.com       # Netdata
+
+# Optional overrides (defaults live in playbooks/group_vars/all/defaults.yml)
+# timezone: Europe/Madrid

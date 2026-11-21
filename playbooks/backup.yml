@@ -6,7 +6,7 @@
 #   config/                   .env, docker-compose.yml, apache-hsts.conf (image versions and passwords of that moment)
 #   manifest.yml              what the backup contains
 # Nextcloud is put in maintenance mode while it runs, so database and files are consistent.
-# Usage: ./run.sh backup.yml [-e backup_keep=5] [-e backup_include_data=true]
+# Usage: ./run.sh backup.yml <env> [-e backup_keep=5] [-e backup_include_data=true]
 - name: Back up the Nextcloud stack
   hosts: nextcloud
   become: yes
@@ -14,7 +14,6 @@
     backup_name: "{{ ansible_facts['date_time']['iso8601_basic_short'] }}Z{{ backup_suffix }}"
     backup_partial: "{{ backup_dir }}/{{ backup_name }}.partial"
     backup_final: "{{ backup_dir }}/{{ backup_name }}"
-    occ: docker exec -u www-data nextcloud-app php occ
 
   pre_tasks:
     - name: Check backup settings
@@ -30,8 +29,8 @@
     - name: Check the stack is running
       command: docker inspect --format='{{ '{{.State.Running}}' }}' {{ item }}
       loop:
-        - nextcloud-app
-        - nextcloud-mariadb
+        - "{{ container_app }}"
+        - "{{ container_db }}"
       register: running
       changed_when: false
       failed_when: running.stdout != 'true'
@@ -66,7 +65,7 @@
           shell: |
             set -o pipefail
             umask 077
-            docker exec nextcloud-mariadb sh -c 'MYSQL_PWD="$MYSQL_ROOT_PASSWORD" exec mariadb-dump -uroot --single-transaction --routines --events --databases "$MYSQL_DATABASE"' | gzip > "{{ backup_partial }}/db.sql.gz"
+            docker exec {{ container_db }} sh -c 'MYSQL_PWD="$MYSQL_ROOT_PASSWORD" exec mariadb-dump -uroot --single-transaction --routines --events --databases "$MYSQL_DATABASE"' | gzip > "{{ backup_partial }}/db.sql.gz"
           args:
             executable: /bin/bash
 
@@ -77,11 +76,12 @@
           register: tar_app
           failed_when: tar_app.rc > 1  # 1 = a file changed while reading, e.g. a log
 
-        - name: Archive the Nginx Proxy Manager data
+        - name: Archive the Nginx Proxy Manager data (only environments that have a proxy)
           command: >-
             tar --numeric-owner -czf {{ backup_partial }}/nginx-proxy-manager.tar.gz -C {{ nginx_data_dir }} .
           register: tar_npm
           failed_when: tar_npm.rc > 1
+          when: with_proxy | bool
 
         - name: Copy the stack configuration
           copy:
@@ -101,7 +101,7 @@
           shell: |
             set -o pipefail
             cd "{{ backup_partial }}"
-            gzip -t db.sql.gz nextcloud-app.tar.gz nginx-proxy-manager.tar.gz
+            gzip -t db.sql.gz nextcloud-app.tar.gz {{ 'nginx-proxy-manager.tar.gz' if with_proxy | bool else '' }}
             zcat db.sql.gz | tail -n 1 | grep -q 'Dump completed'
           args:
             executable: /bin/bash
@@ -125,6 +125,8 @@
           vars:
             manifest:
               name: "{{ backup_name }}"
+              stack_env: "{{ stack_env }}"
+              has_proxy: "{{ with_proxy | bool }}"
               created_utc: "{{ ansible_facts['date_time']['iso8601'] }}"
               nextcloud_version: "{{ nc_status.versionstring }}"
               images: "{{ backup_images.stdout_lines }}"

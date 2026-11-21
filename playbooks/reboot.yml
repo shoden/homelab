@@ -7,14 +7,14 @@
     # Same graceful stop as shutdown.yml, so the containers are down before the host goes down.
     - name: Stop Nextcloud stack
       systemd:
-        name: nextcloud-stack
+        name: "{{ stack_service }}"
         state: stopped
 
     - name: Reboot the host and wait for it to come back
       reboot:
         reboot_timeout: 600
 
-    # nextcloud-stack.service is enabled, so systemd starts the stack at boot.
+    # The stack service is enabled, so systemd starts the stack at boot (and any other stack on this host).
     - name: Wait for Nextcloud to finish starting (copying files, upgrading)
       include_tasks: tasks/wait_nextcloud.yml
 

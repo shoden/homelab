@@ -6,7 +6,7 @@
   tasks:
     - name: Stop Nextcloud stack
       systemd:
-        name: nextcloud-stack
+        name: "{{ stack_service }}"
         state: stopped
 
     - name: Power off
