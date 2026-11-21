@@ -1,3 +1,4 @@
 [tools]
 fd = "latest"
 yq = "latest"
+node = "lts"

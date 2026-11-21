@@ -1,0 +1,53 @@
+---
+# Create the Nextcloud account the end-to-end test logs in with (nextcloud_test_user / nextcloud_test_password,
+# from SecretSpec). Included by deploy.yml once Nextcloud is ready. It is a normal user, not an admin, with a
+# small quota. Idempotent: an existing account keeps its password unless you run with -e e2e_reset_password=true.
+#
+# The password reaches occ through the OC_PASS environment variable (`docker exec -e OC_PASS`), never on a
+# command line. The tasks hide their output (no_log) because it can include the password policy's details;
+# a failure still reports occ's own message.
+- name: Check whether the test account exists
+  command: "{{ occ }} user:info {{ nextcloud_test_user | quote }}"
+  register: test_user_info
+  changed_when: false
+  failed_when: false
+
+- name: Create the test account
+  command: >-
+    docker exec -e OC_PASS -u www-data {{ container_app }} php occ user:add
+    --password-from-env --display-name 'E2E test' {{ nextcloud_test_user | quote }}
+  environment:
+    OC_PASS: "{{ nextcloud_test_password }}"
+  register: test_user_created
+  failed_when: false
+  when: test_user_info.rc != 0
+  no_log: true
+
+- name: Check the test account was created
+  assert:
+    that: test_user_created.rc == 0
+    fail_msg: >-
+      Could not create the Nextcloud test account '{{ nextcloud_test_user }}':
+      {{ (test_user_created.stderr | default('') ~ ' ' ~ test_user_created.stdout | default('')) | trim }}
+      (Nextcloud's password policy may reject NEXTCLOUD_TEST_PASSWORD: use a longer one.)
+    quiet: true
+  when: test_user_info.rc != 0
+
+- name: Change the test account's password (e2e_reset_password)
+  command: >-
+    docker exec -e OC_PASS -u www-data {{ container_app }} php occ user:resetpassword
+    --password-from-env {{ nextcloud_test_user | quote }}
+  environment:
+    OC_PASS: "{{ nextcloud_test_password }}"
+  when: test_user_info.rc == 0 and e2e_reset_password | bool
+  no_log: true
+
+- name: Read the test account's quota
+  command: "{{ occ }} user:setting {{ nextcloud_test_user | quote }} files quota"
+  register: test_user_quota
+  changed_when: false
+  failed_when: false
+
+- name: Limit the test account's quota
+  command: "{{ occ }} user:setting {{ nextcloud_test_user | quote }} files quota '100 MB'"
+  when: test_user_quota.stdout | trim != '100 MB'

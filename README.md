@@ -143,6 +143,7 @@ Dev starts empty. To rehearse an **upgrade**, first deploy the version prod runs
 ./run.sh shutdown.yml prod     # stop the stack gracefully and power off the host
 ./run.sh maintenance_on.yml dev    # put Nextcloud in maintenance mode (users see a maintenance page)
 ./run.sh maintenance_off.yml dev   # take it out of maintenance mode
+./run.sh e2e.yml dev           # only run the end-to-end test against an already deployed environment
 ```
 
 You can also run them directly, naming the inventory of the environment:
@@ -155,6 +156,16 @@ secretspec run --profile prod -- ansible-playbook -i inventory/prod playbooks/de
 ```
 
 `./run.sh` also accepts extra arguments after the environment, e.g. `./run.sh deploy.yml dev -e run_repair=true`. Run it without a playbook (`./run.sh`, or just options like `./run.sh --check --diff`) and, if [fzf](https://github.com/junegunn/fzf) and [yq](https://github.com/mikefarah/yq) are installed, you pick the playbook from a list that shows each playbook's name and description (the `name:` of its first play, e.g. `deploy - Deploy Nextcloud stack`), and then the environment. You can type to filter.
+
+### End-to-end test
+
+`deploy.yml` ends by checking that the deployment really works as a user would use it. It logs in to Nextcloud with a real browser ([Playwright](https://playwright.dev), Chromium only), uploads a small file through the Files app, checks over WebDAV that it arrived, and deletes it again. A failed test **fails the run** (the deployment is already done, nothing is rolled back) and prints the failing step and where the screenshot and page snapshot are.
+
+- **Account:** the test logs in with a dedicated, non-admin account that `deploy.yml` creates (quota 100 MB). Its credentials are two secrets, per environment: `NEXTCLOUD_TEST_USER` (letters, digits, `.` `_` `-`) and `NEXTCLOUD_TEST_PASSWORD` (12+ characters, the same character rules as the other passwords). An existing account keeps its password unless you run with `-e e2e_reset_password=true`.
+- **Where it runs:** on the machine you deploy from, not on the host: Chromium does not belong on a Raspberry Pi, and going through `https://<nextcloud_domain>` also tests DNS, the NPM certificate and the proxy host. That machine needs Node (`mise install`, or any recent Node) and must reach the domain. The first run installs the npm packages and Chromium; on a Linux machine missing the browser's system libraries run once `cd e2e && npx playwright install --with-deps chromium`.
+- **Watch it:** it is headless by default. Add `-e e2e_headed=true` to see the browser, for example `./run.sh e2e.yml dev -e e2e_headed=true`; it needs a display on the machine you run it from. Each action then pauses 400 ms; change that with `-e e2e_slow_mo=1000`.
+- **Run or skip it:** `./run.sh e2e.yml <env>` runs only the test; `./run.sh deploy.yml <env> --skip-tags e2e` deploys without it. It is skipped with `--check`.
+- **The test** is `e2e/tests/nextcloud.spec.ts`. The selectors follow Nextcloud's Files app, so a Nextcloud major upgrade (that is what the dev environment is for) may need them adjusted.
 
 ### What `deploy.yml` does
 

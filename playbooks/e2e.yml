@@ -1,0 +1,13 @@
+---
+# Run only the end-to-end test against an already deployed environment: ./run.sh e2e.yml dev
+# It first makes sure the test account exists (the same idempotent task deploy.yml runs), then runs the test.
+- name: Run the end-to-end test against the deployed Nextcloud
+  hosts: nextcloud
+  become: true
+  gather_facts: false
+  tasks:
+    - name: Make sure the Nextcloud test account exists
+      include_tasks: tasks/test_account.yml
+
+    - name: End-to-end test
+      include_tasks: tasks/e2e.yml

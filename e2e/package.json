@@ -1,0 +1,12 @@
+{
+  "name": "homelab-e2e",
+  "private": true,
+  "description": "End-to-end test of a deployed Nextcloud (run by playbooks/tasks/e2e.yml)",
+  "scripts": {
+    "test": "playwright test"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.65.1",
+    "@types/node": "^22.0.0"
+  }
+}

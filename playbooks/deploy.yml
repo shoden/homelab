@@ -31,7 +31,7 @@
           `secretspec set <NAME> --profile {{ stack_env }}` (names in secretspec.toml). Other settings go in
           inventory/{{ stack_env }}/group_vars/nextcloud/main.yml (see inventory.example/).
         quiet: true
-      loop: "{{ ['nextcloud_domain', 'mysql_user', 'mysql_root_password', 'mysql_password', 'nextcloud_admin_user', 'nextcloud_admin_password'] + (['nginx_admin_email', 'nginx_admin_password', 'ovh_application_key', 'ovh_application_secret', 'ovh_consumer_key', 'npm_certificate_domains', 'proxy_domain'] if with_proxy | bool else []) + (['netdata_domain'] if with_proxy | bool and with_netdata | bool else []) }}"
+      loop: "{{ ['nextcloud_domain', 'mysql_user', 'mysql_root_password', 'mysql_password', 'nextcloud_admin_user', 'nextcloud_admin_password', 'nextcloud_test_user', 'nextcloud_test_password'] + (['nginx_admin_email', 'nginx_admin_password', 'ovh_application_key', 'ovh_application_secret', 'ovh_consumer_key', 'npm_certificate_domains', 'proxy_domain'] if with_proxy | bool else []) + (['netdata_domain'] if with_proxy | bool and with_netdata | bool else []) }}"
       tags: always
 
     # mysql_password is also the Redis password (see env.j2). It ends up unquoted in the Redis
@@ -61,7 +61,7 @@
         quiet: true
       vars:
         env_safe_password: '^[A-Za-z0-9!%&()*+,./:;<=>?@^_~\[\]{}|-]+$'
-      loop: "{{ ['mysql_root_password', 'nextcloud_admin_password'] + (['nginx_admin_password'] if with_proxy | bool else []) }}"
+      loop: "{{ ['mysql_root_password', 'nextcloud_admin_password', 'nextcloud_test_password'] + (['nginx_admin_password'] if with_proxy | bool else []) }}"
       tags: always
 
   tasks:
@@ -235,11 +235,23 @@
       command: "{{ occ_helper }} config:app:set --value false firstrunwizard wizard_enabled"
       when: firstrunwizard_current.rc != 0 or firstrunwizard_current.stdout != 'false'
 
+    # The account the end-to-end test logs in with
+    - name: Create the Nextcloud test account
+      include_tasks: tasks/test_account.yml
+      when: not ansible_check_mode
+
     # The certificate and the proxy hosts (docs: README, "HTTPS / Nginx Proxy Manager"). Skipped in --check
     # runs because they would call the NPM API.
     - name: Configure Nginx Proxy Manager (certificate and proxy hosts)
       include_tasks: tasks/npm.yml
       when: with_proxy | bool and not ansible_check_mode
+
+    # Last step: log in to the deployed Nextcloud with a real browser. A failure fails the run (the deployment
+    # itself is done by then; nothing is rolled back). Skip it with --skip-tags e2e.
+    - name: End-to-end test of the deployed Nextcloud
+      include_tasks: tasks/e2e.yml
+      when: not ansible_check_mode
+      tags: e2e
 
     - name: Display deployment information
       debug:

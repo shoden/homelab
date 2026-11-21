@@ -44,9 +44,22 @@ nextcloud_admin_user: "{{ lookup('ansible.builtin.env', 'NEXTCLOUD_ADMIN_USER') 
 nextcloud_admin_password: "{{ lookup('ansible.builtin.env', 'NEXTCLOUD_ADMIN_PASSWORD') }}"
 nginx_admin_email: "{{ lookup('ansible.builtin.env', 'NGINX_ADMIN_EMAIL') }}"
 nginx_admin_password: "{{ lookup('ansible.builtin.env', 'NGINX_ADMIN_PASSWORD') }}"
+nextcloud_test_user: "{{ lookup('ansible.builtin.env', 'NEXTCLOUD_TEST_USER') }}"
+nextcloud_test_password: "{{ lookup('ansible.builtin.env', 'NEXTCLOUD_TEST_PASSWORD') }}"
 ovh_application_key: "{{ lookup('ansible.builtin.env', 'OVH_APPLICATION_KEY') }}"
 ovh_application_secret: "{{ lookup('ansible.builtin.env', 'OVH_APPLICATION_SECRET') }}"
 ovh_consumer_key: "{{ lookup('ansible.builtin.env', 'OVH_CONSUMER_KEY') }}"
+
+# --- End-to-end test (tasks/test_account.yml creates the account, tasks/e2e.yml runs e2e/ with Playwright) ----
+# Directory of the Playwright project, on the machine you deploy from
+e2e_dir: "{{ playbook_dir }}/../e2e"
+# true: change the test account's password to the current NEXTCLOUD_TEST_PASSWORD (an existing account keeps its
+# password otherwise)
+e2e_reset_password: false
+# true: show the browser while the end-to-end test runs (needs a display on the machine you deploy from).
+# e2e_slow_mo: milliseconds to pause after each action when watching (empty = 400 when headed, 0 otherwise)
+e2e_headed: false
+e2e_slow_mo: ""
 
 # --- Nginx Proxy Manager, configured through its API by tasks/npm.yml (only when with_proxy) ------------------
 # Required in the inventory (no defaults): npm_certificate_domains (comma separated, e.g.

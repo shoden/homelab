@@ -1,0 +1,102 @@
+---
+# End-to-end test: log in to the deployed Nextcloud with a real browser (Playwright, see e2e/), upload a file
+# and delete it. Included by deploy.yml (last step, tag e2e) and by e2e.yml.
+#
+# It runs on the machine you deploy from (delegate_to: localhost), not on the target: Chromium does not belong
+# on a Raspberry Pi, and going through the public URL also tests DNS, the NPM certificate and the proxy host.
+# That machine needs Node (mise.toml) and must be able to reach https://<nextcloud_domain>.
+- name: Check the end-to-end test is configured
+  assert:
+    that:
+      - (nextcloud_domain | default('') | string | length) > 0
+      - (nextcloud_test_user | default('') | string | length) > 0
+      - (nextcloud_test_password | default('') | string | length) > 0
+    fail_msg: >-
+      nextcloud_domain, NEXTCLOUD_TEST_USER and NEXTCLOUD_TEST_PASSWORD must be set
+      (secretspec check --profile {{ stack_env }}).
+    quiet: true
+
+# Right after a deploy the certificate or the proxy host may still be coming up
+- name: Wait until Nextcloud answers over HTTPS
+  uri:
+    url: "https://{{ nextcloud_domain }}/status.php"
+    return_content: true
+  register: e2e_status
+  until: e2e_status.status | default(0) == 200 and e2e_status.json is defined and e2e_status.json.installed | default(false)
+  retries: 30
+  delay: 10
+  changed_when: false
+  delegate_to: localhost
+  become: false
+  run_once: true
+
+- name: Install the Playwright npm packages
+  command: npm ci --no-audit --no-fund
+  args:
+    chdir: "{{ e2e_dir }}"
+    creates: "{{ e2e_dir }}/node_modules/.package-lock.json"
+  delegate_to: localhost
+  become: false
+  run_once: true
+
+# Chromium only. On Linux without the system libraries it needs, run once: npx playwright install --with-deps chromium
+- name: Install the Chromium browser for Playwright
+  command: npx playwright install chromium
+  args:
+    chdir: "{{ e2e_dir }}"
+  register: e2e_browser
+  changed_when: "'Downloading' in e2e_browser.stdout"
+  delegate_to: localhost
+  become: false
+  run_once: true
+
+- name: Run the end-to-end test
+  command: npx playwright test
+  args:
+    chdir: "{{ e2e_dir }}"
+  environment:
+    NEXTCLOUD_URL: "https://{{ nextcloud_domain }}"
+    NEXTCLOUD_TEST_USER: "{{ nextcloud_test_user }}"
+    NEXTCLOUD_TEST_PASSWORD: "{{ nextcloud_test_password }}"
+    E2E_HEADED: "{{ '1' if e2e_headed | bool else '' }}"
+    E2E_SLOW_MO: "{{ e2e_slow_mo }}"
+  register: e2e_result
+  failed_when: false
+  changed_when: false
+  delegate_to: localhost
+  become: false
+  run_once: true
+
+# Playwright's failure snapshot (error-context.md) lists the form fields WITH what was typed, i.e. the password
+- name: Find the failure snapshots
+  find:
+    paths: "{{ e2e_dir }}/test-results"
+    patterns: error-context.md
+    recurse: true
+  register: e2e_snapshots
+  delegate_to: localhost
+  become: false
+  run_once: true
+
+- name: Hide the test password in the failure snapshots
+  replace:
+    path: "{{ item.path }}"
+    regexp: "{{ nextcloud_test_password | regex_escape }}"
+    replace: "********"
+  loop: "{{ e2e_snapshots.files }}"
+  loop_control:
+    label: "{{ item.path | basename }}"
+  delegate_to: localhost
+  become: false
+  run_once: true
+  no_log: true
+
+- name: Check the end-to-end test passed
+  assert:
+    that: e2e_result.rc == 0
+    fail_msg: >-
+      {{ ['The end-to-end test FAILED: the deployed Nextcloud does not work as a user would use it.']
+         + (e2e_result.stdout_lines | default([]) | reject('equalto', '') | list)[-25:]
+         + (e2e_result.stderr_lines | default([]) | reject('equalto', '') | list)[-10:]
+         + ['Screenshot and page snapshot (error-context.md): ' ~ (e2e_dir | realpath) ~ '/test-results'] }}
+    success_msg: "End-to-end test passed: logged in as {{ nextcloud_test_user }}, uploaded and deleted a file."
