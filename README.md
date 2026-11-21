@@ -176,7 +176,7 @@ The HSTS header comes from `apache-hsts.conf`, which is mounted read-only into t
 
 ## HTTPS / Nginx Proxy Manager
 
-Each application is served on its own subdomain, over HTTPS only. Nginx Proxy Manager (NPM) terminates TLS and forwards to the containers over the internal `nextcloud-network`. The proxy hosts and certificates are set up by hand in the NPM admin UI. Ansible does not manage them.
+Each application is served on its own subdomain, over HTTPS only. Nginx Proxy Manager (NPM) terminates TLS and forwards to the containers over the internal `nextcloud-network`. `deploy.yml` sets up the certificate and the proxy hosts for you through NPM's API (see below); you only create the DNS records and the OVH API credentials.
 
 ### 1. Create the subdomains
 
@@ -190,27 +190,36 @@ Create the DNS records at your domain provider **before** requesting certificate
 
 The subdomain names are your choice, except the Nextcloud one: it has to be the `nextcloud_domain` from your inventory, because Nextcloud only accepts requests for that domain.
 
-### 2. Get a certificate
+### 2. Settings and secrets
 
-1. Open the NPM admin UI at `http://<host>:81` and log in with `nginx_admin_email` / `nginx_admin_password`. This direct port is the only way in until the proxy host for NPM itself exists.
-2. Go to **Certificates → Add Certificate → Let's Encrypt via DNS**. Choose **OVH** as the DNS provider and paste the API credentials. See [doc/ovh.md](doc/ovh.md) to create them.
-3. Request either one certificate per subdomain, or a single wildcard certificate (`*.example.com`) that all three proxy hosts can share. The DNS challenge supports wildcards.
+In `inventory/<environment>/group_vars/nextcloud/main.yml` (see `inventory.example/`):
 
-### 3. Add a proxy host for each application
+| Variable | Example | Notes |
+|---|---|---|
+| `npm_certificate_domains` | `dev.example.com,*.dev.example.com` | comma separated: **one** Let's Encrypt certificate for all of them. A wildcard covers the three subdomains below |
+| `nextcloud_domain` | `cloud.dev.example.com` | proxy host to `nextcloud-app:80` |
+| `proxy_domain` | `proxy.dev.example.com` | proxy host to `nextcloud-proxy:81` (NPM's own admin UI) |
+| `netdata_domain` | `netdata.dev.example.com` | proxy host to `nextcloud-netdata:19999` (only with Netdata) |
 
-Under **Hosts → Proxy Hosts → Add Proxy Host**, create three entries with these settings:
+The three domains must be covered by `npm_certificate_domains`. `ovh_endpoint` (default `ovh-eu`) and `npm_dns_propagation_seconds` (default: NPM's own) are optional.
 
-| Setting | Nextcloud | Nginx Proxy Manager | Netdata |
-|---|---|---|---|
-| Domain Names | `cloud.example.com` | `proxy.example.com` | `netdata.example.com` |
-| Scheme | `http` | `http` | `http` |
-| Forward Hostname / IP | `nextcloud-app` | `nextcloud-proxy` | `nextcloud-netdata` |
-| Forward Port | `80` | `81` | `19999` |
-| Websockets Support | on | on | on |
+The OVH API credentials are three secrets in SecretSpec, per environment: `OVH_APPLICATION_KEY`, `OVH_APPLICATION_SECRET` and `OVH_CONSUMER_KEY`. See [doc/ovh.md](doc/ovh.md) to create them.
 
-On the **SSL** tab of each one, select the certificate and turn on **Force SSL** (redirects HTTP to HTTPS) and **HTTP/2 Support**.
+### 3. What `deploy.yml` does in NPM
 
-Once the NPM entry works, you can administer NPM at `https://proxy.example.com` instead of the direct port.
+After the stack is up, `playbooks/tasks/npm.yml` logs in to NPM's API (`http://127.0.0.1:81/api` on the host) with `nginx_admin_email` / `nginx_admin_password` and then:
+
+1. Requests the Let's Encrypt certificate with the **DNS challenge against OVH**, unless one exists for exactly those domains. NPM renews it by itself. The first request can take a few minutes while the DNS record propagates.
+2. Creates each proxy host (or updates it if it differs), all with that certificate, **Force SSL**, **HTTP/2** and **Websockets** on.
+
+It is idempotent, and it only touches the hosts and the certificate listed above: whatever else you add by hand in the NPM UI stays. It is skipped with `--check`. Once the proxy host for NPM exists, you can administer NPM at `https://<proxy_domain>` instead of `http://<host>:81`.
+
+Things to know:
+
+- **Admin login:** NPM only applies `nginx_admin_email` / `nginx_admin_password` on its **first start**. If you change that admin in the UI, put the same email and password into SecretSpec, or the API login fails.
+- **Failures:** a refused request stops the run with NPM's own message. The tasks hide the request details because they contain tokens and the OVH credentials; add `-e npm_debug=true` to see them (and then do not share the output). NPM's own log is `docker logs nextcloud-proxy`.
+- **Let's Encrypt limits:** a repeatedly failing request counts toward its rate limits, so get it working in dev first.
+- **NPM updates:** the API is not a stable public contract, so try NPM upgrades in dev before prod.
 
 ## Accessing
 

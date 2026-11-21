@@ -44,6 +44,26 @@ nextcloud_admin_user: "{{ lookup('ansible.builtin.env', 'NEXTCLOUD_ADMIN_USER') 
 nextcloud_admin_password: "{{ lookup('ansible.builtin.env', 'NEXTCLOUD_ADMIN_PASSWORD') }}"
 nginx_admin_email: "{{ lookup('ansible.builtin.env', 'NGINX_ADMIN_EMAIL') }}"
 nginx_admin_password: "{{ lookup('ansible.builtin.env', 'NGINX_ADMIN_PASSWORD') }}"
+ovh_application_key: "{{ lookup('ansible.builtin.env', 'OVH_APPLICATION_KEY') }}"
+ovh_application_secret: "{{ lookup('ansible.builtin.env', 'OVH_APPLICATION_SECRET') }}"
+ovh_consumer_key: "{{ lookup('ansible.builtin.env', 'OVH_CONSUMER_KEY') }}"
+
+# --- Nginx Proxy Manager, configured through its API by tasks/npm.yml (only when with_proxy) ------------------
+# Required in the inventory (no defaults): npm_certificate_domains (comma separated, e.g.
+# "dev.example.org,*.dev.example.org": one Let's Encrypt certificate for all of them), proxy_domain, and
+# netdata_domain (when with_netdata). nextcloud_domain is the Nextcloud proxy host.
+ovh_endpoint: ovh-eu
+# Seconds NPM waits for the DNS TXT record to propagate; empty = NPM's default
+npm_dns_propagation_seconds: ""
+npm_api: "http://127.0.0.1:81/api"
+# true shows the NPM API requests in the output, INCLUDING tokens and the OVH credentials (-e npm_debug=true)
+npm_debug: false
+# One proxy host per entry; they all use the certificate above, Force SSL, HTTP/2 and websockets
+npm_proxy_hosts:
+  - { domain: "{{ nextcloud_domain }}", host: "{{ container_app }}", port: 80 }
+  - { domain: "{{ proxy_domain }}", host: "{{ container_proxy }}", port: 81 }
+npm_proxy_hosts_netdata:
+  - { domain: "{{ netdata_domain }}", host: "{{ container_netdata }}", port: 19999 }
 nextcloud_port: 8080
 
 # Clean install: true removes all volumes and /opt/nextcloud (development only).

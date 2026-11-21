@@ -1,0 +1,68 @@
+---
+# Create or update ONE proxy host in NPM. Included by tasks/npm.yml for each entry of npm_proxy_hosts
+# (npm_host = {domain, host, port}); uses npm_hosts, npm_cert_id and npm_headers from there.
+- name: Work out the wanted settings of {{ npm_host.domain }}
+  set_fact:
+    npm_want:
+      domain_names: ["{{ npm_host.domain }}"]
+      forward_scheme: http
+      forward_host: "{{ npm_host.host }}"
+      forward_port: "{{ npm_host.port | int }}"
+      certificate_id: "{{ npm_cert_id | int }}"
+      ssl_forced: true
+      http2_support: true
+      allow_websocket_upgrade: true
+    npm_have: "{{ npm_hosts.json | selectattr('domain_names', 'equalto', [npm_host.domain]) | list | first | default({}) }}"
+    npm_diff: []
+
+- name: Compare with the existing proxy host {{ npm_host.domain }}
+  set_fact:
+    npm_diff: "{{ npm_diff + [item.key] }}"
+  loop: "{{ npm_want | dict2items }}"
+  loop_control:
+    label: "{{ item.key }}"
+  when:
+    - npm_have | length > 0
+    - (npm_have[item.key] | default('') | string | lower | regex_replace('^true$', '1') | regex_replace('^false$', '0')) !=
+      (item.value | string | lower | regex_replace('^true$', '1') | regex_replace('^false$', '0'))
+
+- name: Create the proxy host {{ npm_host.domain }}
+  uri:
+    url: "{{ npm_api }}/nginx/proxy-hosts"
+    method: POST
+    headers: "{{ npm_headers }}"
+    body_format: json
+    body: "{{ npm_want }}"
+    status_code: "{{ range(200, 600) | list }}"
+  register: npm_host_created
+  changed_when: npm_host_created.status in [200, 201]
+  when: npm_have | length == 0
+  no_log: "{{ not npm_debug | bool }}"
+
+- name: Update the proxy host {{ npm_host.domain }} ({{ npm_diff | join(', ') }})
+  uri:
+    url: "{{ npm_api }}/nginx/proxy-hosts/{{ npm_have.id }}"
+    method: PUT
+    headers: "{{ npm_headers }}"
+    body_format: json
+    body: "{{ npm_want }}"
+    status_code: "{{ range(200, 600) | list }}"
+  register: npm_host_updated
+  changed_when: npm_host_updated.status in [200, 201]
+  when: npm_have | length > 0 and npm_diff | length > 0
+  no_log: "{{ not npm_debug | bool }}"
+
+# Each call registers its own variable: a skipped task would overwrite a shared one
+- name: Take the result of whichever call ran
+  set_fact:
+    npm_host_result: "{{ npm_host_created if npm_host_created is not skipped else npm_host_updated }}"
+  no_log: true
+
+- name: Check the proxy host {{ npm_host.domain }} was saved
+  assert:
+    that: npm_host_result.status in [200, 201]
+    fail_msg: >-
+      NPM refused the proxy host {{ npm_host.domain }} (HTTP {{ npm_host_result.status }}:
+      {{ npm_host_result.json.error.message | default('no message') }}).
+    quiet: true
+  when: npm_host_result is not skipped

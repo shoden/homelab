@@ -1,0 +1,133 @@
+---
+# Configure Nginx Proxy Manager through its API: one Let's Encrypt certificate (DNS challenge against OVH)
+# for npm_certificate_domains and the proxy hosts of npm_proxy_hosts. Included by deploy.yml when with_proxy.
+#
+# Idempotent: a certificate is requested only if none exists for exactly those domains (NPM renews it by
+# itself), and a proxy host is created or updated only if it is missing or differs. Hosts and certificates
+# that are not listed here are never touched. The requests run on the target host against NPM's admin port.
+#
+# no_log is on while handling tokens and the OVH credentials; -e npm_debug=true turns it off (it then prints
+# them). The login is nginx_admin_email / nginx_admin_password, which NPM only applies on its FIRST start:
+# if you changed that admin in the NPM UI, set the same values in SecretSpec.
+- name: Wait for the NPM API
+  uri:
+    url: "{{ npm_api }}/"
+  register: npm_up
+  until: npm_up.json is defined and npm_up.json.status | default('') == 'OK'
+  retries: 60
+  delay: 5
+  changed_when: false
+
+- name: Log in to the NPM API
+  uri:
+    url: "{{ npm_api }}/tokens"
+    method: POST
+    body_format: json
+    body:
+      identity: "{{ nginx_admin_email }}"
+      secret: "{{ nginx_admin_password }}"
+    status_code: "{{ range(200, 600) | list }}"
+  register: npm_login
+  changed_when: false
+  no_log: "{{ not npm_debug | bool }}"
+
+- name: Check the NPM login worked
+  assert:
+    that: npm_login.status == 200 and npm_login.json.token is defined
+    fail_msg: >-
+      NPM login failed (HTTP {{ npm_login.status }}: {{ npm_login.json.error.message | default('no message') }}).
+      nginx_admin_email / nginx_admin_password only apply on NPM's first start; if you changed the admin in the
+      NPM UI, set the same email and password in SecretSpec (profile {{ stack_env }}).
+    quiet: true
+
+- name: Remember the API token
+  set_fact:
+    npm_headers:
+      Authorization: "Bearer {{ npm_login.json.token }}"
+  no_log: true
+
+# ---- certificate -----------------------------------------------------------------------------------------
+- name: List the NPM certificates
+  uri:
+    url: "{{ npm_api }}/nginx/certificates"
+    headers: "{{ npm_headers }}"
+    return_content: true
+  register: npm_certs
+  changed_when: false
+  no_log: "{{ not npm_debug | bool }}"
+
+- name: Read the wanted certificate domains (comma separated)
+  set_fact:
+    npm_cert_domains: "{{ (npm_certificate_domains if npm_certificate_domains is not string else npm_certificate_domains.split(',')) | map('trim') | reject('equalto', '') | list }}"
+
+# A certificate matches when it covers exactly the same domains, in any order
+- name: Look for an existing certificate for those domains
+  vars:
+    npm_cert_lists: "{{ npm_certs.json | map(attribute='domain_names') | map('sort') | list }}"
+  set_fact:
+    npm_cert_id: "{{ npm_certs.json[npm_cert_lists.index(npm_cert_domains | sort | list)].id if (npm_cert_domains | sort | list) in npm_cert_lists else '' }}"
+
+- name: Build the OVH credentials for NPM
+  set_fact:
+    npm_cert_meta: >-
+      {{ {'dns_challenge': true, 'dns_provider': 'ovh', 'dns_provider_credentials': ovh_credentials_text}
+         | combine({'propagation_seconds': npm_dns_propagation_seconds | int}
+                   if (npm_dns_propagation_seconds | string | length > 0) else {}) }}
+  vars:
+    ovh_credentials_text: |-
+      dns_ovh_endpoint = {{ ovh_endpoint }}
+      dns_ovh_application_key = {{ ovh_application_key }}
+      dns_ovh_application_secret = {{ ovh_application_secret }}
+      dns_ovh_consumer_key = {{ ovh_consumer_key }}
+  when: npm_cert_id == ''
+  no_log: true
+
+# Let's Encrypt validates the DNS record first: this call can take a few minutes
+- name: Request the Let's Encrypt certificate (DNS challenge, OVH)
+  uri:
+    url: "{{ npm_api }}/nginx/certificates"
+    method: POST
+    headers: "{{ npm_headers }}"
+    body_format: json
+    body:
+      provider: letsencrypt
+      domain_names: "{{ npm_cert_domains }}"
+      meta: "{{ npm_cert_meta }}"
+    status_code: "{{ range(200, 600) | list }}"
+    timeout: 900
+  register: npm_cert_created
+  changed_when: npm_cert_created.status in [200, 201]
+  when: npm_cert_id == ''
+  no_log: "{{ not npm_debug | bool }}"
+
+- name: Check the certificate was issued
+  assert:
+    that: npm_cert_created.status in [200, 201] and npm_cert_created.json.id is defined
+    fail_msg: >-
+      NPM could not issue the certificate for {{ npm_cert_domains | join(', ') }} (HTTP {{ npm_cert_created.status }}:
+      {{ npm_cert_created.json.error.message | default(npm_cert_created.msg | default('no message')) }}).
+      Check the OVH credentials and that the domain is in the OVH account; the details are in NPM's log:
+      docker logs {{ container_proxy }}.
+    quiet: true
+  when: npm_cert_id == ''
+
+- name: Remember the certificate id
+  set_fact:
+    npm_cert_id: "{{ npm_cert_created.json.id if npm_cert_id == '' else npm_cert_id }}"
+
+# ---- proxy hosts -----------------------------------------------------------------------------------------
+- name: List the NPM proxy hosts
+  uri:
+    url: "{{ npm_api }}/nginx/proxy-hosts"
+    headers: "{{ npm_headers }}"
+    return_content: true
+  register: npm_hosts
+  changed_when: false
+  no_log: "{{ not npm_debug | bool }}"
+
+- name: Create or update each proxy host
+  include_tasks: npm_proxy_host.yml
+  loop: "{{ npm_proxy_hosts + (npm_proxy_hosts_netdata if with_netdata | bool else []) }}"
+  loop_control:
+    loop_var: npm_host
+    label: "{{ npm_host.domain }}"
