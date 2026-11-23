@@ -10,3 +10,27 @@ scrape_configs:
         labels:
           host: {{ target.name }}
 {% endfor %}
+
+  # VictoriaLogs itself (hub, over the internal network): rows ingested, dropped, disk use
+  - job_name: victorialogs
+    scheme: {{ 'https' if logs_tls | bool else 'http' }}
+{% if logs_tls | bool %}
+    tls_config:
+      ca_file: /etc/victoria/logs-ca.crt
+{% endif %}
+    basic_auth:
+      username: "{{ logs_user }}"
+      password: "{{ logs_ingest_password }}"
+    static_configs:
+      - targets: ['victoria-logs:9428']
+        labels:
+          host: {{ stack_env }}
+
+  # Each log shipper's Vector: whether it runs and whether its events get through
+  - job_name: vector
+    static_configs:
+{% for target in monitoring_targets if target.shipper | default(true) %}
+      - targets: ['{{ target.address.split(':')[0] }}:{{ log_shipper_metrics_listen.split(':')[-1] }}']
+        labels:
+          host: {{ target.name }}
+{% endfor %}

@@ -18,6 +18,10 @@ sources:
       - {{ container_vector }}
       - {{ container_docker_proxy }}
 
+  # Vector's own counters (events sent, errors, ...): the hub scrapes them for the log alerts
+  vector_metrics:
+    type: internal_metrics
+
 transforms:
   enrich:
     type: remap
@@ -36,6 +40,11 @@ transforms:
       }
 
 sinks:
+  metrics:
+    type: prometheus_exporter
+    inputs: [vector_metrics]
+    address: 0.0.0.0:9598
+
   victorialogs:
     type: elasticsearch
     inputs: [enrich]

@@ -206,7 +206,7 @@
             owner: "{{ item.owner | default('root') }}"
             mode: "{{ item.mode | default('0644') }}"
           loop:
-            - { src: scrape.yml.j2, dest: scrape.yml }
+            - { src: scrape.yml.j2, dest: scrape.yml, mode: '0600' }
             - { src: alertmanager.yml.j2, dest: alertmanager.yml, owner: '65534', mode: '0600' }
             - { src: grafana-victorialogs.yml.j2, dest: provisioning/datasources/victorialogs.yml }
           loop_control:

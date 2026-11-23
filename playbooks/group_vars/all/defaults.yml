@@ -63,6 +63,9 @@ logs_tls_hosts: []
 logs_tls_days: 3650
 logs_tls_dir: "{{ (playbook_dir ~ '/../certs') | realpath }}"
 logs_user: logs
+# Each shipper's Vector metrics (events sent and errors), scraped by the hub for the log alerts. Same exposure rules as
+# node_exporter: LAN only. A monitoring_targets entry with `shipper: false` is not scraped for them.
+log_shipper_metrics_listen: "0.0.0.0:9598"
 logs_ingest_password: "{{ lookup('ansible.builtin.env', 'LOGS_INGEST_PASSWORD') }}"
 # VictoriaLogs drops old data when either limit is reached, whichever comes first
 logs_retention: 90d

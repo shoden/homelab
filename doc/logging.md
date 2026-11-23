@@ -40,4 +40,24 @@ vector ── journald (system)
 - Retention: `logs_retention` (90d) and `logs_max_disk` (20GB); whichever is reached first drops the oldest data.
 - Only the journal of the current boot is read on a fresh start, and only directories that exist on the host are
   mounted (`/var/log/journal` and/or `/run/log/journal`).
-- Not done yet: alert rules on logs (needs a second vmalert pointed at VictoriaLogs).
+
+## Alerts (to the same Telegram chat)
+
+They come from metrics, so the existing vmalert evaluates them (rules in `playbooks/files/monitoring/alerts.yml`, group
+`logs`). The hub's VictoriaMetrics scrapes VictoriaLogs itself (job `victorialogs`, over the internal network, with
+the logs login) and every shipper's Vector (job `vector`, port 9598 on the LAN like node_exporter, from
+`monitoring_targets`; an entry with `shipper: false` is skipped).
+
+| Alert | Fires when |
+|---|---|
+| `LogsNotIngested` | no rows ingested from any host in the last hour |
+| `HostNotShippingLogs` | a host's Vector is up but delivered nothing to the hub in the last hour |
+| `LogShipperErrors` | a shipper keeps failing to send (wrong password, certificate or address): events are lost |
+| `LogShipperDown` / `LogsHubDown` | Vector or VictoriaLogs stop answering to the scrape |
+| `LogVolumePeak` | a host logs over 5 times its daily average and over 20 lines per second, for 10 minutes |
+| `LogsRowsDropped` | VictoriaLogs drops rows (bad timestamp, too many fields) |
+| `LogsStorageReadOnly` | the disk is almost full and VictoriaLogs rejects new logs |
+| `LogsNearDiskCap` | the logs use over 90% of `logs_max_disk`, so the oldest are already being dropped |
+
+Tune the thresholds in `alerts.yml`; a deploy restarts vmalert and VictoriaMetrics when it changes. Alerts on the
+content of the logs (for example "ssh login failures") would need a second vmalert pointed at VictoriaLogs.

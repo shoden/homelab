@@ -135,6 +135,9 @@ services:
     volumes:
       - ${MONITORING_DIR}/vm-data:/storage
       - ${MONITORING_DIR}/scrape.yml:/etc/victoria/scrape.yml:ro
+{% if logs_tls | bool %}
+      - ${MONITORING_DIR}/tls/server.crt:/etc/victoria/logs-ca.crt:ro
+{% endif %}
     networks:
       - nextcloud-network
 
@@ -244,6 +247,8 @@ services:
     container_name: {{ container_vector }}
     restart: unless-stopped
     command: ["--config", "/etc/vector/vector.yaml"]
+    ports:
+      - '${LOG_SHIPPER_METRICS_LISTEN}:9598'
     volumes:
       - ${NEXTCLOUD_BASE_DIR}/vector.yaml:/etc/vector/vector.yaml:ro
       - ${LOG_SHIPPER_DIR}:/var/lib/vector

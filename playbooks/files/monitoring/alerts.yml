@@ -79,3 +79,71 @@ groups:
         labels: {severity: critical}
         annotations:
           summary: "{{ $labels.host }}: SoC at {{ $value | printf \"%.0f\" }} C, it is throttling"
+
+  # Logs. VictoriaLogs' own metrics (job victorialogs) and each shipper's Vector (job vector, label host).
+  - name: logs
+    interval: 30s
+    rules:
+      - alert: LogsNotIngested
+        expr: sum(increase(vl_rows_ingested_total[1h])) == 0
+        for: 5m
+        labels: {severity: critical}
+        annotations:
+          summary: "VictoriaLogs has ingested no logs in the last hour (from any host)"
+
+      - alert: LogsHubDown
+        expr: up{job="victorialogs"} == 0
+        for: 3m
+        labels: {severity: critical}
+        annotations:
+          summary: "VictoriaLogs is not answering (no metrics for 3 minutes)"
+
+      - alert: LogShipperDown
+        expr: up{job="vector"} == 0
+        for: 3m
+        labels: {severity: warning}
+        annotations:
+          summary: "{{ $labels.host }}: the log shipper (Vector) is not answering"
+
+      - alert: HostNotShippingLogs
+        expr: up{job="vector"} == 1 unless on (host) (increase(vector_component_sent_events_total{job="vector", component_id="victorialogs"}[1h]) > 0)
+        for: 5m
+        labels: {severity: warning}
+        annotations:
+          summary: "{{ $labels.host }}: no logs delivered to the hub in the last hour"
+
+      - alert: LogShipperErrors
+        expr: increase(vector_component_errors_total{job="vector", component_id="victorialogs"}[10m]) > 0
+        for: 5m
+        labels: {severity: warning}
+        annotations:
+          summary: "{{ $labels.host }}: sending logs to the hub fails, events are being lost (wrong password, certificate or address?)"
+
+      - alert: LogVolumePeak
+        expr: |
+          rate(vector_component_received_events_total{job="vector", component_id="victorialogs"}[10m]) > 5 * rate(vector_component_received_events_total{job="vector", component_id="victorialogs"}[1d])
+          and rate(vector_component_received_events_total{job="vector", component_id="victorialogs"}[10m]) > 20
+        for: 10m
+        labels: {severity: warning}
+        annotations:
+          summary: "{{ $labels.host }}: {{ $value | printf \"%.0f\" }} log lines per second, over 5 times its daily average"
+
+      - alert: LogsRowsDropped
+        expr: increase(vl_rows_dropped_total[10m]) > 0
+        labels: {severity: warning}
+        annotations:
+          summary: "VictoriaLogs dropped {{ $value | printf \"%.0f\" }} rows ({{ $labels.reason }}), usually a bad timestamp or too many fields"
+
+      - alert: LogsStorageReadOnly
+        expr: vl_storage_is_read_only == 1
+        for: 1m
+        labels: {severity: critical}
+        annotations:
+          summary: "VictoriaLogs storage is read-only (disk almost full): new logs are rejected"
+
+      - alert: LogsNearDiskCap
+        expr: sum(vl_data_size_bytes) / max(vl_max_disk_space_usage_bytes) * 100 > 90
+        for: 30m
+        labels: {severity: info}
+        annotations:
+          summary: "Logs use {{ $value | printf \"%.0f\" }}% of logs_max_disk: the oldest logs are being dropped, so retention is shorter than logs_retention"
