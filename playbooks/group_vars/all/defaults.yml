@@ -12,23 +12,20 @@ container_app: "{{ stack_name }}-app"
 container_db: "{{ stack_name }}-mariadb"
 container_redis: "{{ stack_name }}-redis"
 container_proxy: "{{ stack_name }}-proxy"
-container_netdata: "{{ stack_name }}-netdata"
 stack_service: "{{ stack_name }}-stack"                # systemd unit
 occ_helper: "/usr/local/bin/{{ stack_name }}-occ"   
 occ: "docker exec -u www-data {{ container_app }} php occ"
 
-# The reverse proxy (Nginx Proxy Manager: ports 80, 443, 81) and Netdata (port 19999) are deployed in every
-# environment. Each environment is meant to run on its own host: two stacks that both enable them cannot share
-# one (the ports clash). Set either to false in an inventory to leave it out.
+# The reverse proxy (Nginx Proxy Manager: ports 80, 443, 81) is deployed in every
+# environment. Each environment is meant to run on its own host: two stacks that both enable it cannot share
+# one (the ports clash). Set it to false in an inventory to leave it out.
 with_proxy: true
-with_netdata: true
 
 nextcloud_base_dir: "/opt/{{ stack_name }}"
 nextcloud_data_dir: "{{ nextcloud_base_dir }}/app"
 mariadb_data_dir: "{{ nextcloud_base_dir }}/db"
 redis_data_dir: "{{ nextcloud_base_dir }}/redis"
 nginx_data_dir: "{{ nextcloud_base_dir }}/nginx-proxy-manager"
-netdata_data_dir: "{{ nextcloud_base_dir }}/netdata"
 
 timezone: UTC
 
@@ -63,8 +60,7 @@ e2e_slow_mo: ""
 
 # --- Nginx Proxy Manager, configured through its API by tasks/npm.yml (only when with_proxy) ------------------
 # Required in the inventory (no defaults): npm_certificate_domains (comma separated, e.g.
-# "dev.example.org,*.dev.example.org": one Let's Encrypt certificate for all of them), proxy_domain, and
-# netdata_domain (when with_netdata). nextcloud_domain is the Nextcloud proxy host.
+# "dev.example.org,*.dev.example.org": one Let's Encrypt certificate for all of them), and proxy_domain. nextcloud_domain is the Nextcloud proxy host.
 ovh_endpoint: ovh-eu
 # Seconds NPM waits for the DNS TXT record to propagate; empty = NPM's default
 npm_dns_propagation_seconds: ""
@@ -75,8 +71,6 @@ npm_debug: false
 npm_proxy_hosts:
   - { domain: "{{ nextcloud_domain }}", host: "{{ container_app }}", port: 80 }
   - { domain: "{{ proxy_domain }}", host: "{{ container_proxy }}", port: 81 }
-npm_proxy_hosts_netdata:
-  - { domain: "{{ netdata_domain }}", host: "{{ container_netdata }}", port: 19999 }
 nextcloud_port: 8080
 
 # Clean install: true removes all volumes and /opt/nextcloud (development only).

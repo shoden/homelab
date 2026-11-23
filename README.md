@@ -1,6 +1,6 @@
 # Homelab
 
-Ansible playbooks for a self-hosted homelab. Currently they deploy a Nextcloud stack (Nextcloud, MariaDB, Redis, Nginx Proxy Manager and Netdata) with Docker Compose on a single Debian/Ubuntu host, each application served on its own subdomain over HTTPS.
+Ansible playbooks for a self-hosted homelab. Currently they deploy a Nextcloud stack (Nextcloud, MariaDB, Redis and Nginx Proxy Manager) with Docker Compose on a single Debian/Ubuntu host, each application served on its own subdomain over HTTPS.
 
 ## Stack
 
@@ -10,7 +10,6 @@ Ansible playbooks for a self-hosted homelab. Currently they deploy a Nextcloud s
 | MariaDB | `nextcloud-mariadb` | `mariadb:11.8.6` | — |
 | Redis | `nextcloud-redis` | `redis:8.2.4-alpine` | — |
 | Nginx Proxy Manager | `nextcloud-proxy` | `jc21/nginx-proxy-manager:2.14.0` | 80, 443, 81 (admin UI) |
-| Netdata | `nextcloud-netdata` | `netdata/netdata:v2.9.0` | 19999 |
 
 All containers share the `nextcloud-network` bridge network. Nextcloud waits for MariaDB and Redis to pass their healthchecks before starting. Nginx Proxy Manager handles TLS and proxies to `nextcloud-app:80`. It stores its own config in the same MariaDB database.
 
@@ -35,7 +34,7 @@ doc/                     extra documentation
 - [SecretSpec](https://secretspec.dev) on the control machine: all credentials (users, passwords, the NPM admin email) live in it, not in the repo
 - SSH access to the target host with sudo rights
 - Ubuntu/Debian on the target. The playbook installs `docker.io` and `docker-compose`.
-- A domain at a DNS provider, with a subdomain per application (Nextcloud, Nginx Proxy Manager, Netdata) created beforehand and pointing at the host. See [HTTPS / Nginx Proxy Manager](#https--nginx-proxy-manager). Certificates are obtained via a DNS challenge.
+- A domain at a DNS provider, with a subdomain per application (Nextcloud, Nginx Proxy Manager) created beforehand and pointing at the host. See [HTTPS / Nginx Proxy Manager](#https--nginx-proxy-manager). Certificates are obtained via a DNS challenge.
 
 ## Setup (once)
 
@@ -62,7 +61,7 @@ Defaults are in `playbooks/group_vars/all/defaults.yml`. Override any of them in
 | `stack_env` | **required** | the environment this inventory is: `prod`, `dev`, ... (see below) |
 | `nextcloud_domain` | **required** | public domain, used for trusted domains and `overwrite.cli.url` |
 | `timezone` | `UTC` | e.g. `Europe/Madrid` |
-| `nextcloud_base_dir` | `/opt/<stack name>` (prod: `/opt/nextcloud`) | data directories are created under it: `app/`, `db/`, `redis/`, `nginx-proxy-manager/`, `netdata/` |
+| `nextcloud_base_dir` | `/opt/<stack name>` (prod: `/opt/nextcloud`) | data directories are created under it: `app/`, `db/`, `redis/`, `nginx-proxy-manager/` |
 | `clean_install` | `false` | `true` **deletes the base directory and all data** before reinstalling |
 | `run_repair` | `false` | also run the slow repair and index steps on a run that doesn't restart the stack |
 
@@ -103,7 +102,7 @@ Setting values flow like this: Ansible variables → `playbooks/templates/env.j2
 
 ## Environments (prod and dev)
 
-Environments (`prod`, `dev`, ...) let you try a change (a Nextcloud major upgrade, a new image, a branch) in `dev` before touching `prod`. Each environment is a directory of `inventory/` with its own host, settings and passwords, and every playbook runs against exactly one of them. **Every environment deploys the full stack** (Nextcloud, MariaDB, Redis, Nginx Proxy Manager and Netdata) and is meant to run on **its own host**: ports 80, 443, 81 and 19999 can only be bound once per machine, so do not point two environments at the same host.
+Environments (`prod`, `dev`, ...) let you try a change (a Nextcloud major upgrade, a new image, a branch) in `dev` before touching `prod`. Each environment is a directory of `inventory/` with its own host, settings and passwords, and every playbook runs against exactly one of them. **Every environment deploys the full stack** (Nextcloud, MariaDB, Redis and Nginx Proxy Manager) and is meant to run on **its own host**: ports 80, 443 and 81 can only be bound once per machine, so do not point two environments at the same host.
 
 ```bash
 ./run.sh deploy.yml dev       # deploy to dev
@@ -197,7 +196,6 @@ Create the DNS records at your domain provider **before** requesting certificate
 |---|---|---|
 | Nextcloud | `cloud.example.com` (must equal `nextcloud_domain`) | `nextcloud-app`, port `80` |
 | Nginx Proxy Manager (admin UI) | `proxy.example.com` | `nextcloud-proxy`, port `81` |
-| Netdata | `netdata.example.com` | `nextcloud-netdata`, port `19999` |
 
 The subdomain names are your choice, except the Nextcloud one: it has to be the `nextcloud_domain` from your inventory, because Nextcloud only accepts requests for that domain.
 
@@ -210,7 +208,6 @@ In `inventory/<environment>/group_vars/nextcloud/main.yml` (see `inventory.examp
 | `npm_certificate_domains` | `dev.example.com,*.dev.example.com` | comma separated: **one** Let's Encrypt certificate for all of them. A wildcard covers the three subdomains below |
 | `nextcloud_domain` | `cloud.dev.example.com` | proxy host to `nextcloud-app:80` |
 | `proxy_domain` | `proxy.dev.example.com` | proxy host to `nextcloud-proxy:81` (NPM's own admin UI) |
-| `netdata_domain` | `netdata.dev.example.com` | proxy host to `nextcloud-netdata:19999` (only with Netdata) |
 
 The three domains must be covered by `npm_certificate_domains`. `ovh_endpoint` (default `ovh-eu`) and `npm_dns_propagation_seconds` (default: NPM's own) are optional.
 
@@ -240,7 +237,6 @@ Everything is reached over HTTPS through its own subdomain:
 |---|---|---|
 | Nextcloud | `https://cloud.example.com` | `nextcloud_admin_user` / `nextcloud_admin_password` |
 | Nginx Proxy Manager | `https://proxy.example.com` | `nginx_admin_email` / `nginx_admin_password` |
-| Netdata | `https://netdata.example.com` | none (see the security notes) |
 
 Replace the example subdomains with the ones you created.
 
@@ -339,5 +335,4 @@ RENOVATE_TOKEN=... ./renovate.sh   # open/update the PRs on GitHub from your mac
 - `<base dir>/.env` on the host contains every secret and has mode 0600.
 - Secrets live only in your SecretSpec provider (`secretspec.toml` holds names, never values). `inventory/` is gitignored and holds no credentials.
 - Passwords set in SecretSpec only take effect when MariaDB, Nextcloud and Nginx Proxy Manager first initialise. Changing one later does not change the live account. Change it in the service as well (`ALTER USER`, `nextcloud-occ user:resetpassword`, the NPM UI).
-- Ports 81 (proxy admin) and 19999 (Netdata) are also published directly on the host over plain HTTP. Port 81 is needed for the first login, before any proxy host exists. Once the subdomains work, block both ports with a firewall so the applications are only reachable over HTTPS.
-- Netdata has no login of its own. Anyone who can reach `https://netdata.example.com` can see your host's metrics. Restrict it with an **Access List** in NPM (Hosts → Access Lists) and attach it to the Netdata proxy host.
+- Port 81 (proxy admin) is also published directly on the host over plain HTTP. It is needed for the first login, before any proxy host exists. Once the subdomains work, block it with a firewall so the applications are only reachable over HTTPS.

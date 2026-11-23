@@ -106,37 +106,6 @@ services:
     networks:
       - nextcloud-network
 {% endif %}
-{% if with_netdata | bool %}
-
-  netdata:
-    image: netdata/netdata:v2.13.0
-    container_name: {{ container_netdata }}
-    restart: unless-stopped
-    pid: host
-    cap_add:
-      - SYS_PTRACE
-      - SYS_ADMIN
-    security_opt:
-      - apparmor:unconfined
-    ports:
-      - '19999:19999'
-    volumes:
-      - ${NETDATA_DATA_DIR}/config:/etc/netdata
-      - ${NETDATA_DATA_DIR}/lib:/var/lib/netdata
-      - ${NETDATA_DATA_DIR}/cache:/var/cache/netdata
-      - /etc/passwd:/host/etc/passwd:ro
-      - /etc/group:/host/etc/group:ro
-      - /etc/localtime:/etc/localtime:ro
-      - /proc:/host/proc:ro
-      - /sys:/host/sys:ro
-      - /etc/os-release:/host/etc/os-release:ro
-      - /var/run/docker.sock:/var/run/docker.sock:ro
-    environment:
-      - NETDATA_CLAIM_TOKEN=
-      - NETDATA_CLAIM_URL=https://app.netdata.cloud
-    networks:
-      - nextcloud-network
-{% endif %}
 
 networks:
   nextcloud-network:

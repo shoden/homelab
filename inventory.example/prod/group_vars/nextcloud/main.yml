@@ -8,7 +8,6 @@ nextcloud_domain: nextcloud.example.com    # public domain served by Nginx Proxy
 # must be covered by the certificate (a wildcard covers the subdomains).
 npm_certificate_domains: "example.com,*.example.com"
 proxy_domain: proxy.example.com            # Nginx Proxy Manager's own admin UI
-netdata_domain: netdata.example.com        # Netdata
 
 # Optional overrides (defaults live in playbooks/group_vars/all/defaults.yml)
 # timezone: Europe/Madrid
