@@ -1,0 +1,21 @@
+# Grafana data source for the logs (VictoriaLogs). $LOGS_USER and $LOGS_PASSWORD are replaced by Grafana with its
+# environment variables (see the compose file).
+apiVersion: 1
+datasources:
+  - name: VictoriaLogs
+    uid: victorialogs
+    type: victoriametrics-logs-datasource
+    access: proxy
+    url: {{ 'https' if logs_tls | bool else 'http' }}://victoria-logs:9428
+    basicAuth: true
+    basicAuthUser: $LOGS_USER
+{% if logs_tls | bool %}
+    jsonData:
+      tlsAuthWithCACert: true
+{% endif %}
+    secureJsonData:
+      basicAuthPassword: $LOGS_PASSWORD
+{% if logs_tls | bool %}
+      tlsCACert: |
+{{ lookup('file', logs_tls_dir ~ '/logs.crt') | indent(8, true) }}
+{% endif %}

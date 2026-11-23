@@ -1,0 +1,113 @@
+---
+# TLS for the logs on the LAN (no domain, so no Let's Encrypt): the hub gets a self-signed certificate for the
+# addresses the other hosts use (logs_tls_hosts) and every shipper trusts exactly that certificate. Included by
+# deploy.yml when logs_tls and the host is the hub or ships logs.
+#
+# The certificate and its key are created ON THE MACHINE YOU DEPLOY FROM (logs_tls_dir, gitignored) and copied from
+# there, so the same certificate reaches the hub and the shippers of every environment. Deploy the hub first.
+# To renew or change the addresses: change logs_tls_hosts (it is reissued by itself) or delete logs_tls_dir/logs.crt.
+- name: Work out the addresses the certificate must cover
+  set_fact:
+    logs_tls_sans: >-
+      {{ ['DNS:victoria-logs', 'DNS:' ~ container_logs]
+         + (logs_tls_hosts
+            | map('regex_replace', '^(\d+\.\d+\.\d+\.\d+)$', 'IP:\1')
+            | map('regex_replace', '^(?!IP:)(.+)$', 'DNS:\1') | list) }}
+
+# check_mode false: these only write the local certificate directory, and the Grafana data source template reads it
+- name: Create the certificate directory on this machine
+  file:
+    path: "{{ logs_tls_dir }}"
+    state: directory
+    mode: '0700'
+  check_mode: false
+  delegate_to: localhost
+  become: false
+  run_once: true
+
+- name: Create the hub's private key
+  community.crypto.openssl_privatekey:
+    path: "{{ logs_tls_dir }}/logs.key"
+    type: RSA
+    size: 3072
+    mode: '0600'
+  check_mode: false
+  delegate_to: localhost
+  become: false
+  when: with_monitoring_hub | bool
+
+- name: Create the certificate request
+  community.crypto.openssl_csr_pipe:
+    privatekey_path: "{{ logs_tls_dir }}/logs.key"
+    common_name: victoria-logs
+    subject_alt_name: "{{ logs_tls_sans }}"
+  register: logs_csr
+  changed_when: false
+  check_mode: false
+  delegate_to: localhost
+  become: false
+  when: with_monitoring_hub | bool
+
+- name: Create the self-signed certificate (reissued when the addresses change)
+  community.crypto.x509_certificate:
+    path: "{{ logs_tls_dir }}/logs.crt"
+    csr_content: "{{ logs_csr.csr }}"
+    privatekey_path: "{{ logs_tls_dir }}/logs.key"
+    provider: selfsigned
+    selfsigned_not_after: "+{{ logs_tls_days }}d"
+    mode: '0644'
+  check_mode: false
+  delegate_to: localhost
+  become: false
+  when: with_monitoring_hub | bool
+
+- name: Check the certificate exists on this machine
+  stat:
+    path: "{{ logs_tls_dir }}/logs.crt"
+  register: logs_crt
+  check_mode: false
+  delegate_to: localhost
+  become: false
+
+- name: Fail if the hub has not created the certificate yet
+  assert:
+    that: logs_crt.stat.exists
+    fail_msg: "{{ logs_tls_dir }}/logs.crt does not exist: deploy the monitoring hub (dev) first, it creates the logs certificate."
+    quiet: true
+
+- name: Ensure the hub's certificate directory exists
+  file:
+    path: "{{ monitoring_dir }}/tls"
+    state: directory
+    mode: '0755'
+  when: with_monitoring_hub | bool
+
+- name: Install the certificate and key in VictoriaLogs
+  copy:
+    src: "{{ logs_tls_dir }}/{{ item.src }}"
+    dest: "{{ monitoring_dir }}/tls/{{ item.dest }}"
+    mode: "{{ item.mode }}"
+  loop:
+    - { src: logs.crt, dest: server.crt, mode: '0644' }
+    - { src: logs.key, dest: server.key, mode: '0600' }
+  loop_control:
+    label: "{{ item.dest }}"
+  when: with_monitoring_hub | bool
+  no_log: true
+  register: logs_tls_hub_files
+
+- name: Ensure the log shipper's data directory exists
+  file:
+    path: "{{ log_shipper_dir }}"
+    state: directory
+    mode: '0755'
+  when: with_log_shipper | bool
+
+# Vector trusts only this certificate (not the system's authorities) for the hub
+- name: Give the log shipper the certificate to trust
+  copy:
+    src: "{{ logs_tls_dir }}/logs.crt"
+    dest: "{{ log_shipper_dir }}/logs-ca.crt"
+    mode: '0644'
+  when: with_log_shipper | bool
+  register: logs_ca_file

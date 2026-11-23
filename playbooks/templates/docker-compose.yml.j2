@@ -181,19 +181,91 @@ services:
       - GF_ANALYTICS_CHECK_FOR_UPDATES=false
       - GF_ANALYTICS_CHECK_FOR_PLUGIN_UPDATES=false
       - GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH=/var/lib/grafana-dashboards/pi-hosts.json
+      - GF_INSTALL_PLUGINS=victoriametrics-logs-datasource
+      - LOGS_USER=${LOGS_USER}
+      - LOGS_PASSWORD=${LOGS_INGEST_PASSWORD}
     volumes:
       - ${MONITORING_DIR}/grafana-data:/var/lib/grafana
       - ${MONITORING_DIR}/provisioning:/etc/grafana/provisioning:ro
       - ${MONITORING_DIR}/dashboards:/var/lib/grafana-dashboards:ro
     depends_on:
       - victoria-metrics
+      - victoria-logs
     networks:
       - nextcloud-network
+
+  # Logs of every host (see the shippers below). Published on the LAN (logs_listen) for the other hosts' shippers;
+  # Grafana queries it over the internal network. Both use TLS (logs_tls) and the basic auth below.
+  victoria-logs:
+    image: victoriametrics/victoria-logs:v1.54.0
+    container_name: {{ container_logs }}
+    restart: unless-stopped
+    command:
+      - -envflag.enable
+      - -storageDataPath=/vlogs
+      - -retentionPeriod=${LOGS_RETENTION}
+      - -retention.maxDiskSpaceUsageBytes=${LOGS_MAX_DISK}
+{% if logs_tls | bool %}
+      - -tls
+      - -tlsCertFile=/tls/server.crt
+      - -tlsKeyFile=/tls/server.key
+{% endif %}
+    environment:
+      - httpAuth_username=${LOGS_USER}
+      - httpAuth_password=${LOGS_INGEST_PASSWORD}
+    volumes:
+      - ${MONITORING_DIR}/vlogs-data:/vlogs
+{% if logs_tls | bool %}
+      - ${MONITORING_DIR}/tls:/tls:ro
+{% endif %}
+    ports:
+      - '${LOGS_LISTEN}:9428'
+    networks:
+      - nextcloud-network
+{% endif %}
+{% if with_log_shipper | bool %}
+
+  # Read-only view of the Docker API (container list and logs only), so Vector does not get the full socket.
+  # It sits on an internal network that only Vector joins: other containers cannot reach it (container
+  # inspect would reveal their environment, passwords included).
+  docker-proxy:
+    image: tecnativa/docker-socket-proxy:3.4
+    container_name: {{ container_docker_proxy }}
+    restart: unless-stopped
+    environment:
+      - CONTAINERS=1
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+      - logs-network
+
+  vector:
+    image: timberio/vector:0.62.0-debian
+    container_name: {{ container_vector }}
+    restart: unless-stopped
+    command: ["--config", "/etc/vector/vector.yaml"]
+    volumes:
+      - ${NEXTCLOUD_BASE_DIR}/vector.yaml:/etc/vector/vector.yaml:ro
+      - ${LOG_SHIPPER_DIR}:/var/lib/vector
+      - /etc/machine-id:/etc/machine-id:ro
+{% for journal_dir in log_journal_dirs %}
+      - {{ journal_dir }}:{{ journal_dir }}:ro
+{% endfor %}
+    depends_on:
+      - docker-proxy
+    networks:
+      - nextcloud-network
+      - logs-network
 {% endif %}
 
 networks:
   nextcloud-network:
     driver: bridge
+{% if with_log_shipper | bool %}
+  logs-network:
+    driver: bridge
+    internal: true
+{% endif %}
 
 volumes:
   nextcloud-data:

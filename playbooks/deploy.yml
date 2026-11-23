@@ -71,7 +71,7 @@
             quiet: true
           vars:
             env_safe_password: '^[A-Za-z0-9!%&()*+,./:;<=>?@^_~\[\]{}|-]+$'
-          loop: "{{ ['mysql_root_password', 'nextcloud_admin_password', 'nextcloud_test_password'] + (['nginx_admin_password'] if with_proxy | bool else []) + (['grafana_admin_password'] if with_monitoring_hub | bool else []) }}"
+          loop: "{{ ['mysql_root_password', 'nextcloud_admin_password', 'nextcloud_test_password'] + (['nginx_admin_password'] if with_proxy | bool else []) + (['grafana_admin_password'] if with_monitoring_hub | bool else []) + (['logs_ingest_password'] if with_log_shipper | bool or with_monitoring_hub | bool else []) }}"
           tags: always
 
         - name: Check the monitoring hub settings
@@ -89,6 +89,35 @@
               {name, address}) in inventory/{{ stack_env }}/group_vars/nextcloud/main.yml, and TELEGRAM_BOT_TOKEN
               (like 123456:ABC-def), TELEGRAM_CHAT_ID (a number) and GRAFANA_ADMIN_PASSWORD in SecretSpec
               (`secretspec set <NAME> --profile {{ stack_env }}`).
+            quiet: true
+          when: with_monitoring_hub | bool
+          tags: always
+
+        - name: Check the log shipper settings
+          assert:
+            that:
+              - (logs_hub_url | default('') | string | length) > 0
+              - logs_hub_url is match('^https://' if logs_tls | bool else '^http://')
+              - not (logs_hub_url | string is search('example\\.(com|org)'))
+              - logs_hub_url is match('^https?://[^/]+$')
+              - (logs_ingest_password | string | length) > 0
+            fail_msg: >-
+              with_log_shipper needs logs_hub_url in inventory/{{ stack_env }}/group_vars/nextcloud/main.yml (the
+              hub's address, e.g. http://192.168.1.10:9428, without a path) and LOGS_INGEST_PASSWORD in
+              SecretSpec (the same value in every profile: `secretspec set LOGS_INGEST_PASSWORD --profile {{ stack_env }}`).
+            quiet: true
+          when: with_log_shipper | bool
+          tags: always
+
+        - name: Check the hub has the logs password
+          assert:
+            that:
+              - (logs_ingest_password | string | length) > 0
+              - not (logs_tls | bool) or (logs_tls_hosts | length) > 0
+            fail_msg: >-
+              The monitoring hub serves the logs: set LOGS_INGEST_PASSWORD in SecretSpec
+              (`secretspec set LOGS_INGEST_PASSWORD --profile {{ stack_env }}`), the same value in every profile, and,
+              with logs_tls, logs_tls_hosts (the IPs the other hosts use for the hub, e.g. ["192.168.1.10"]) in the inventory.
             quiet: true
           when: with_monitoring_hub | bool
           tags: always
@@ -153,6 +182,7 @@
           loop:
             - { path: "{{ monitoring_dir }}" }
             - { path: "{{ monitoring_dir }}/vm-data" }
+            - { path: "{{ monitoring_dir }}/vlogs-data" }
             - { path: "{{ monitoring_dir }}/alertmanager-data", owner: '65534' }
             - { path: "{{ monitoring_dir }}/grafana-data", owner: '472' }
             - { path: "{{ monitoring_dir }}/dashboards" }
@@ -163,6 +193,12 @@
             label: "{{ item.path }}"
           when: with_monitoring_hub | bool
 
+        # The logs certificate (hub: created here and installed in VictoriaLogs; shippers: the one they trust). Before
+        # the monitoring configuration, whose Grafana data source embeds it.
+        - name: Set up TLS for the logs
+          include_tasks: tasks/logs_tls.yml
+          when: logs_tls | bool and (with_monitoring_hub | bool or with_log_shipper | bool)
+
         - name: Deploy monitoring configuration (scrape targets, alert rules, Grafana provisioning and dashboard)
           template:
             src: "{{ item.src }}"
@@ -172,6 +208,7 @@
           loop:
             - { src: scrape.yml.j2, dest: scrape.yml }
             - { src: alertmanager.yml.j2, dest: alertmanager.yml, owner: '65534', mode: '0600' }
+            - { src: grafana-victorialogs.yml.j2, dest: provisioning/datasources/victorialogs.yml }
           loop_control:
             label: "{{ item.dest }}"
           when: with_monitoring_hub | bool
@@ -211,6 +248,36 @@
             label: "{{ item.dest }}"
           when: with_monitoring_hub | bool
           register: monitoring_statics
+
+        # Only the journal directories that exist are mounted into Vector: Docker would create a missing
+        # /var/log/journal, and a persistent journal directory makes journald start storing to disk.
+        - name: Look for the systemd journal directories
+          stat:
+            path: "{{ item }}"
+          loop: [/var/log/journal, /run/log/journal]
+          register: journal_dirs
+          when: with_log_shipper | bool
+
+        - name: Remember which journal directories exist
+          set_fact:
+            log_journal_dirs: "{{ journal_dirs.results | selectattr('stat.exists') | map(attribute='item') | list }}"
+          when: with_log_shipper | bool
+
+        - name: Ensure the log shipper's data directory exists
+          file:
+            path: "{{ log_shipper_dir }}"
+            state: directory
+            mode: '0755'
+          when: with_log_shipper | bool
+
+        - name: Deploy the log shipper configuration (Vector)
+          template:
+            src: vector.yaml.j2
+            dest: "{{ nextcloud_base_dir }}/vector.yaml"
+            mode: '0600'
+          when: with_log_shipper | bool
+          no_log: true
+          register: vector_file
 
         - name: Deploy .env file
           template:
@@ -259,7 +326,7 @@
 
         - name: Determine whether the stack must be restarted
           set_fact:
-            stack_config_changed: "{{ [env_file, compose_file, hsts_file, unit_file] | select('changed') | list | length > 0 }}"
+            stack_config_changed: "{{ [env_file, compose_file, hsts_file, unit_file, vector_file | default({}), logs_ca_file | default({})] | select('changed') | list | length > 0 }}"
 
         # New image tags (e.g. from a merged Renovate PR) are downloaded while the old stack is still
         # running, so the downtime is only the restart and the systemd start timeout (300s) is not
@@ -285,16 +352,16 @@
             enabled: yes
             state: started
 
-        # Config of the hub's containers changed but the compose/.env did not: restart just those (Grafana reloads
-        # its dashboards by itself), so Nextcloud is not touched.
+        # Config of the hub's containers changed but the compose/.env did not: restart just those (Grafana reads
+        # its dashboards by itself but its datasources only at start), so Nextcloud is not touched.
         - name: Restart monitoring containers (their configuration changed)
-          command: docker-compose restart victoria-metrics alertmanager vmalert
+          command: docker-compose restart victoria-metrics alertmanager vmalert grafana victoria-logs
           args:
             chdir: "{{ nextcloud_base_dir }}"
           when:
             - with_monitoring_hub | bool
             - not (stack_config_changed | bool)
-            - (monitoring_templates.results | default([]) + monitoring_statics.results | default([])) | select('changed') | list | length > 0
+            - (monitoring_templates.results | default([]) + monitoring_statics.results | default([]) + logs_tls_hub_files.results | default([])) | select('changed') | list | length > 0
 
         - name: Create occ helper script
           copy:

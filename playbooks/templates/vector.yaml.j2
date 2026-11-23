@@ -1,0 +1,70 @@
+# Ships the logs of this host to VictoriaLogs on the monitoring hub: the systemd journal (system) and the stdout/stderr
+# of every container (apps). Contains the logs password (Vector does not expand ${VAR} in the sink's auth block, it
+# would send them literally and get 401), so deploy.yml writes this file with mode 0600.
+data_dir: /var/lib/vector
+
+sources:
+{% if log_journal_dirs | length > 0 %}
+  journal:
+    type: journald
+    # only this boot: a first start must not replay weeks of history
+    current_boot_only: true
+{% endif %}
+  docker:
+    type: docker_logs
+    docker_host: tcp://docker-proxy:2375
+    # not our own plumbing: if the hub is down these would only log about that, and ship it again
+    exclude_containers:
+      - {{ container_vector }}
+      - {{ container_docker_proxy }}
+
+transforms:
+  enrich:
+    type: remap
+    inputs:
+{% if log_journal_dirs | length > 0 %}
+      - journal
+{% endif %}
+      - docker
+    source: |
+      .host = "{{ stack_env }}"
+      if exists(.container_name) {
+        .source = "docker"
+      } else {
+        .source = "journal"
+        if exists(._SYSTEMD_UNIT) { .unit = del(._SYSTEMD_UNIT) }
+      }
+
+sinks:
+  victorialogs:
+    type: elasticsearch
+    inputs: [enrich]
+    endpoints:
+      - {{ logs_hub_url }}/insert/elasticsearch/
+    api_version: v8
+    mode: bulk
+    compression: gzip
+    auth:
+      strategy: basic
+      user: "{{ logs_user }}"
+      password: "{{ logs_ingest_password }}"
+    healthcheck:
+      enabled: false
+{% if logs_tls | bool %}
+    # trust only the hub's certificate (tasks/logs_tls.yml), not the system's authorities
+    tls:
+      ca_file: /var/lib/vector/logs-ca.crt
+{% endif %}
+    query:
+      _msg_field: message
+      _time_field: timestamp
+      _stream_fields: host,source,container_name,unit
+    batch:
+      # well below the proxy's client_max_body_size
+      max_bytes: 5000000
+      timeout_secs: 5
+    # if the hub is unreachable, keep logs on disk instead of dropping them
+    buffer:
+      type: disk
+      max_size: {{ log_shipper_buffer_bytes }}
+      when_full: block

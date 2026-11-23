@@ -17,6 +17,9 @@ container_metrics: "{{ stack_name }}-victoria-metrics"
 container_vmalert: "{{ stack_name }}-vmalert"
 container_alertmanager: "{{ stack_name }}-alertmanager"
 container_grafana: "{{ stack_name }}-grafana"
+container_logs: "{{ stack_name }}-victoria-logs"
+container_vector: "{{ stack_name }}-vector"
+container_docker_proxy: "{{ stack_name }}-docker-proxy"
 stack_service: "{{ stack_name }}-stack"                # systemd unit
 occ_helper: "/usr/local/bin/{{ stack_name }}-occ"   
 occ: "docker exec -u www-data {{ container_app }} php occ"
@@ -39,6 +42,34 @@ monitoring_retention: 30d
 monitoring_scrape_interval: 30s
 # Hub only, in the inventory: [{ name: dev, address: "192.168.1.10:9100" }, { name: prod, address: "192.168.1.11:9100" }]
 monitoring_targets: []
+
+# --- Logs ----------------------------------------------------------------------------------------------------
+# with_log_shipper: Vector ships this host's logs (systemd journal + every container) to VictoriaLogs on the hub.
+# Off by default; set it in the inventory of every environment that should ship (the hub too).
+# The hub (with_monitoring_hub) also runs VictoriaLogs; Grafana browses it. The other hosts push to it directly on the
+# LAN (direct to the hub's IP, no domain): logs_listen is the address the hub publishes it on (do NOT forward
+# that port on the router).
+# logs_hub_url: where a shipper pushes; on the hub it is the local container, elsewhere set it in the inventory to the
+# hub's address, e.g. https://192.168.1.10:9428 (an IP: containers cannot resolve mDNS names).
+# logs_tls: encrypt it with a self-signed certificate (tasks/logs_tls.yml). The hub's inventory lists the addresses
+# the other hosts use in logs_tls_hosts (e.g. ["192.168.1.10"]); the certificate lives in logs_tls_dir on the
+# machine you deploy from (gitignored), so deploy the hub first. The shippers trust only that certificate.
+# Access is basic auth (user logs_user, password LOGS_INGEST_PASSWORD in SecretSpec: the SAME value in every profile).
+with_log_shipper: false
+logs_hub_url: "{{ (('https' if logs_tls | bool else 'http') ~ '://victoria-logs:9428') if with_monitoring_hub | bool else '' }}"
+logs_listen: "0.0.0.0:9428"
+logs_tls: true
+logs_tls_hosts: []
+logs_tls_days: 3650
+logs_tls_dir: "{{ (playbook_dir ~ '/../certs') | realpath }}"
+logs_user: logs
+logs_ingest_password: "{{ lookup('ansible.builtin.env', 'LOGS_INGEST_PASSWORD') }}"
+# VictoriaLogs drops old data when either limit is reached, whichever comes first
+logs_retention: 90d
+logs_max_disk: 20GB
+# Disk buffer of each shipper (bytes) for when the hub is unreachable (minimum 268435488)
+log_shipper_buffer_bytes: 1073741824
+log_shipper_dir: "{{ nextcloud_base_dir }}/vector"
 
 nextcloud_base_dir: "/opt/{{ stack_name }}"
 nextcloud_data_dir: "{{ nextcloud_base_dir }}/app"

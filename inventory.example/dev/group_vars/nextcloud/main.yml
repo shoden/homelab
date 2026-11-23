@@ -14,6 +14,10 @@ proxy_domain: proxy.dev.example.com           # Nginx Proxy Manager's own admin 
 # TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID in SecretSpec (see secretspec.toml).
 with_monitoring_hub: true
 grafana_domain: grafana.dev.example.com       # covered by the certificate above
+# Logs of every host, browsed in Grafana. The other hosts push to this host's port 9428 on the LAN over TLS (never forward it
+# on the router). Needs LOGS_INGEST_PASSWORD in SecretSpec (same value in every profile).
+with_log_shipper: true                        # the hub ships its own logs too
+logs_tls_hosts: ["192.168.1.10"]              # the addresses the other hosts use for this hub (TLS certificate)
 # Use IP addresses (static or reserved in the router): containers cannot resolve mDNS names (*.local)
 monitoring_targets:
   - { name: dev, address: "192.168.1.10:9100" }

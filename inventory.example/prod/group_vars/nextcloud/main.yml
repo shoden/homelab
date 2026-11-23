@@ -9,5 +9,10 @@ nextcloud_domain: nextcloud.example.com    # public domain served by Nginx Proxy
 npm_certificate_domains: "example.com,*.example.com"
 proxy_domain: proxy.example.com            # Nginx Proxy Manager's own admin UI
 
+# Ship this host's logs (systemd journal and containers) to the monitoring hub's VictoriaLogs, browsed in Grafana.
+# logs_hub_url is the hub's LAN address (an IP) and port 9428; needs LOGS_INGEST_PASSWORD in SecretSpec (same value in every profile).
+with_log_shipper: true
+logs_hub_url: https://192.168.1.10:9428
+
 # Optional overrides (defaults live in playbooks/group_vars/all/defaults.yml)
 # timezone: Europe/Madrid
