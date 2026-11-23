@@ -124,7 +124,7 @@ services:
 {% if with_monitoring_hub | bool %}
 
   victoria-metrics:
-    image: victoriametrics/victoria-metrics:v1.156.0
+    image: victoriametrics/victoria-metrics:v1.157.0
     container_name: {{ container_metrics }}
     restart: unless-stopped
     command:
@@ -152,7 +152,7 @@ services:
       - nextcloud-network
 
   vmalert:
-    image: victoriametrics/vmalert:v1.156.0
+    image: victoriametrics/vmalert:v1.157.0
     container_name: {{ container_vmalert }}
     restart: unless-stopped
     command:
