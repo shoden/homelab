@@ -91,6 +91,18 @@
   run_once: true
   no_log: true
 
+# Failure alert to the same Telegram chat as the monitoring alerts (needs TELEGRAM_BOT_TOKEN/TELEGRAM_CHAT_ID in the
+# environment's SecretSpec profile, optional; e2e_telegram_alert=false turns it off). A failed send only warns.
+- name: Send a Telegram alert that the end-to-end test failed
+  include_tasks: telegram_notify.yml
+  vars:
+    telegram_text: >-
+      E2E FAILED ({{ stack_env }}): Nextcloud at https://{{ nextcloud_domain }} does not work as a user would
+      use it (login, upload, delete). Run: ./run.sh e2e.yml {{ stack_env }}
+  when:
+    - e2e_result.rc != 0
+    - e2e_telegram_alert | bool
+
 - name: Check the end-to-end test passed
   assert:
     that: e2e_result.rc == 0
