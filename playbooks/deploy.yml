@@ -5,362 +5,390 @@
   # Settings come from playbooks/group_vars/all/defaults.yml (project defaults) and from
   # inventory/<env>/group_vars/nextcloud/main.yml (your site; see inventory.example/); credentials from SecretSpec (secretspec.toml).
   # Pick the environment with the inventory: ./run.sh deploy.yml prod|dev
-  pre_tasks:
-    - name: Check the environment
-      assert:
-        that:
-          - stack_env is defined
-          - stack_env is match('^[a-z][a-z0-9]*$')
-        fail_msg: "stack_env must be set in the inventory (prod, dev, ...): lowercase letters and digits, e.g. stack_env: dev"
-        quiet: true
-      tags: always
-
-    - name: Show the environment being deployed
-      debug:
-        msg: "Environment '{{ stack_env }}': stack {{ stack_name }} in {{ nextcloud_base_dir }}, domain {{ nextcloud_domain | default('(not set)') }}"
-      tags: always
-
-    - name: Check required settings are provided
-      assert:
-        that:
-          - (lookup('vars', item, default='') | string | length) > 0
-          - not (lookup('vars', item, default='') | string is search('CHANGE_ME|changeme|example\\.(com|org)'))
-        fail_msg: >-
-          '{{ item }}' is missing or still a placeholder. Credentials come from SecretSpec: check them with
-          `secretspec check --profile {{ stack_env }}` and set a missing one with
-          `secretspec set <NAME> --profile {{ stack_env }}` (names in secretspec.toml). Other settings go in
-          inventory/{{ stack_env }}/group_vars/nextcloud/main.yml (see inventory.example/).
-        quiet: true
-      loop: "{{ ['nextcloud_domain', 'mysql_user', 'mysql_root_password', 'mysql_password', 'nextcloud_admin_user', 'nextcloud_admin_password', 'nextcloud_test_user', 'nextcloud_test_password'] + (['nginx_admin_email', 'nginx_admin_password', 'ovh_application_key', 'ovh_application_secret', 'ovh_consumer_key', 'npm_certificate_domains', 'proxy_domain'] if with_proxy | bool else []) }}"
-      tags: always
-
-    # mysql_password is also the Redis password (see env.j2). It ends up unquoted in the Redis
-    # `--requirepass` command line and in the PHP session URL (`tcp://redis:6379?auth=...`), so characters
-    # such as < > + = ! $ # ' " or spaces silently truncate or corrupt it (Redis then rejects the app's
-    # password and Nextcloud answers 500). Only letters, digits, `_`, `.` and `-` are allowed, and it
-    # can't start with `-` (it would be read as an option).
-    - name: Check mysql_password (also the Redis password) only uses safe characters
-      assert:
-        that:
-          - mysql_password | string is match('^[A-Za-z0-9][A-Za-z0-9._-]*$')
-        fail_msg: >-
-          'mysql_password' is also the Redis password and breaks Redis or the session URL with special
-          characters. Use only letters, digits, '_', '.' and '-' (starting with a letter or digit), e.g.
-          openssl rand -base64 24 | tr -dc 'A-Za-z0-9'
-        quiet: true
-      tags: always
-
-    # The other passwords only travel through .env and compose `environment:` into container variables
-    # (no command line, no URL), so most printable characters work. Excluded: $ (compose interpolation),
-    # # ' " ` \ (parsed by .env), and spaces. Only the variable name is reported, never the value.
-    - name: Check the other passwords do not use characters that break .env
-      assert:
-        that:
-          - lookup('vars', item, default='') | string is match(env_safe_password)
-        fail_msg: "'{{ item }}' contains a character that breaks the .env file: space, $ # ' \" ` or a backslash. Other special characters are fine."
-        quiet: true
-      vars:
-        env_safe_password: '^[A-Za-z0-9!%&()*+,./:;<=>?@^_~\[\]{}|-]+$'
-      loop: "{{ ['mysql_root_password', 'nextcloud_admin_password', 'nextcloud_test_password'] + (['nginx_admin_password'] if with_proxy | bool else []) + (['grafana_admin_password'] if with_monitoring_hub | bool else []) }}"
-      tags: always
-
-    - name: Check the monitoring hub settings
-      assert:
-        that:
-          - with_proxy | bool
-          - (grafana_domain | default('') | length) > 0
-          - not (grafana_domain | default('') is search('example\\.(com|org)'))
-          - monitoring_targets | length > 0
-          - monitoring_targets | selectattr('name', 'defined') | selectattr('address', 'defined') | list | length == monitoring_targets | length
-          - telegram_bot_token is match('^[0-9]+:[A-Za-z0-9_-]+$')
-          - telegram_chat_id is match('^-?[0-9]+$')
-        fail_msg: >-
-          The monitoring hub needs with_proxy, grafana_domain and monitoring_targets (a list of
-          {name, address}) in inventory/{{ stack_env }}/group_vars/nextcloud/main.yml, and TELEGRAM_BOT_TOKEN
-          (like 123456:ABC-def), TELEGRAM_CHAT_ID (a number) and GRAFANA_ADMIN_PASSWORD in SecretSpec
-          (`secretspec set <NAME> --profile {{ stack_env }}`).
-        quiet: true
-      when: with_monitoring_hub | bool
-      tags: always
-
+  # Everything runs inside one block so that deploy.yml can tell Telegram how it ended (tasks/audit_deploy.yml):
+  # the last step reports success, the rescue reports the failed task and then fails the run again.
   tasks:
-    - name: Install required packages
-      apt:
-        name:
-          - docker.io
-          - docker-compose
-          - libnss3-tools
-          - tree
-          - neovim
-        state: present
-        update_cache: yes
-        cache_valid_time: 3600
+    - name: Deploy the stack and audit the result
+      block:
+        - name: Remember when the deploy started
+          set_fact:
+            deploy_started: "{{ now(utc=true).strftime('%s') }}"
+          run_once: true
+          tags: always
 
-    - name: Ensure Docker service is running
-      systemd:
-        name: docker
-        state: started
-        enabled: yes
+        - name: Check the environment
+          assert:
+            that:
+              - stack_env is defined
+              - stack_env is match('^[a-z][a-z0-9]*$')
+            fail_msg: "stack_env must be set in the inventory (prod, dev, ...): lowercase letters and digits, e.g. stack_env: dev"
+            quiet: true
+          tags: always
 
-    - name: Add ansible user to docker group
-      user:
-        name: "{{ ansible_user }}"
-        groups: docker
-        append: yes
+        - name: Show the environment being deployed
+          debug:
+            msg: "Environment '{{ stack_env }}': stack {{ stack_name }} in {{ nextcloud_base_dir }}, domain {{ nextcloud_domain | default('(not set)') }}"
+          tags: always
 
-    - name: Stop existing Docker Compose stack and remove volumes (clean install only)
-      command:
-        cmd: docker-compose down -v
-        chdir: "{{ nextcloud_base_dir }}"
-      ignore_errors: yes
-      when: clean_install | bool
+        - name: Check required settings are provided
+          assert:
+            that:
+              - (lookup('vars', item, default='') | string | length) > 0
+              - not (lookup('vars', item, default='') | string is search('CHANGE_ME|changeme|example\\.(com|org)'))
+            fail_msg: >-
+              '{{ item }}' is missing or still a placeholder. Credentials come from SecretSpec: check them with
+              `secretspec check --profile {{ stack_env }}` and set a missing one with
+              `secretspec set <NAME> --profile {{ stack_env }}` (names in secretspec.toml). Other settings go in
+              inventory/{{ stack_env }}/group_vars/nextcloud/main.yml (see inventory.example/).
+            quiet: true
+          loop: "{{ ['nextcloud_domain', 'mysql_user', 'mysql_root_password', 'mysql_password', 'nextcloud_admin_user', 'nextcloud_admin_password', 'nextcloud_test_user', 'nextcloud_test_password'] + (['nginx_admin_email', 'nginx_admin_password', 'ovh_application_key', 'ovh_application_secret', 'ovh_consumer_key', 'npm_certificate_domains', 'proxy_domain'] if with_proxy | bool else []) }}"
+          tags: always
 
-    - name: Remove Nextcloud base directory (clean install only)
-      file:
-        path: "{{ nextcloud_base_dir }}"
-        state: absent
-      when: clean_install | bool
+        # mysql_password is also the Redis password (see env.j2). It ends up unquoted in the Redis
+        # `--requirepass` command line and in the PHP session URL (`tcp://redis:6379?auth=...`), so characters
+        # such as < > + = ! $ # ' " or spaces silently truncate or corrupt it (Redis then rejects the app's
+        # password and Nextcloud answers 500). Only letters, digits, `_`, `.` and `-` are allowed, and it
+        # can't start with `-` (it would be read as an option).
+        - name: Check mysql_password (also the Redis password) only uses safe characters
+          assert:
+            that:
+              - mysql_password | string is match('^[A-Za-z0-9][A-Za-z0-9._-]*$')
+            fail_msg: >-
+              'mysql_password' is also the Redis password and breaks Redis or the session URL with special
+              characters. Use only letters, digits, '_', '.' and '-' (starting with a letter or digit), e.g.
+              openssl rand -base64 24 | tr -dc 'A-Za-z0-9'
+            quiet: true
+          tags: always
 
-    - name: Ensure base directories exist
-      file:
-        path: "{{ item }}"
-        state: directory
-        mode: '0755'
-      loop: "{{ base_dirs + proxy_dirs }}"
-      vars:
-        base_dirs:
-          - "{{ nextcloud_data_dir }}"
-          - "{{ mariadb_data_dir }}"
-          - "{{ redis_data_dir }}"
-        proxy_dirs: "{{ [nginx_data_dir] if with_proxy | bool else [] }}"
+        # The other passwords only travel through .env and compose `environment:` into container variables
+        # (no command line, no URL), so most printable characters work. Excluded: $ (compose interpolation),
+        # # ' " ` \ (parsed by .env), and spaces. Only the variable name is reported, never the value.
+        - name: Check the other passwords do not use characters that break .env
+          assert:
+            that:
+              - lookup('vars', item, default='') | string is match(env_safe_password)
+            fail_msg: "'{{ item }}' contains a character that breaks the .env file: space, $ # ' \" ` or a backslash. Other special characters are fine."
+            quiet: true
+          vars:
+            env_safe_password: '^[A-Za-z0-9!%&()*+,./:;<=>?@^_~\[\]{}|-]+$'
+          loop: "{{ ['mysql_root_password', 'nextcloud_admin_password', 'nextcloud_test_password'] + (['nginx_admin_password'] if with_proxy | bool else []) + (['grafana_admin_password'] if with_monitoring_hub | bool else []) }}"
+          tags: always
 
-    # Monitoring hub: Grafana runs as uid 472 and Alertmanager as nobody (65534); VictoriaMetrics as root.
-    - name: Ensure monitoring directories exist
-      file:
-        path: "{{ item.path }}"
-        state: directory
-        owner: "{{ item.owner | default('root') }}"
-        mode: '0755'
-      loop:
-        - { path: "{{ monitoring_dir }}" }
-        - { path: "{{ monitoring_dir }}/vm-data" }
-        - { path: "{{ monitoring_dir }}/alertmanager-data", owner: '65534' }
-        - { path: "{{ monitoring_dir }}/grafana-data", owner: '472' }
-        - { path: "{{ monitoring_dir }}/dashboards" }
-        - { path: "{{ monitoring_dir }}/provisioning" }
-        - { path: "{{ monitoring_dir }}/provisioning/datasources" }
-        - { path: "{{ monitoring_dir }}/provisioning/dashboards" }
-      loop_control:
-        label: "{{ item.path }}"
-      when: with_monitoring_hub | bool
+        - name: Check the monitoring hub settings
+          assert:
+            that:
+              - with_proxy | bool
+              - (grafana_domain | default('') | length) > 0
+              - not (grafana_domain | default('') is search('example\\.(com|org)'))
+              - monitoring_targets | length > 0
+              - monitoring_targets | selectattr('name', 'defined') | selectattr('address', 'defined') | list | length == monitoring_targets | length
+              - telegram_bot_token is match('^[0-9]+:[A-Za-z0-9_-]+$')
+              - telegram_chat_id is match('^-?[0-9]+$')
+            fail_msg: >-
+              The monitoring hub needs with_proxy, grafana_domain and monitoring_targets (a list of
+              {name, address}) in inventory/{{ stack_env }}/group_vars/nextcloud/main.yml, and TELEGRAM_BOT_TOKEN
+              (like 123456:ABC-def), TELEGRAM_CHAT_ID (a number) and GRAFANA_ADMIN_PASSWORD in SecretSpec
+              (`secretspec set <NAME> --profile {{ stack_env }}`).
+            quiet: true
+          when: with_monitoring_hub | bool
+          tags: always
 
-    - name: Deploy monitoring configuration (scrape targets, alert rules, Grafana provisioning and dashboard)
-      template:
-        src: "{{ item.src }}"
-        dest: "{{ monitoring_dir }}/{{ item.dest }}"
-        owner: "{{ item.owner | default('root') }}"
-        mode: "{{ item.mode | default('0644') }}"
-      loop:
-        - { src: scrape.yml.j2, dest: scrape.yml }
-        - { src: alertmanager.yml.j2, dest: alertmanager.yml, owner: '65534', mode: '0600' }
-      loop_control:
-        label: "{{ item.dest }}"
-      when: with_monitoring_hub | bool
-      no_log: true
-      register: monitoring_templates
+        - name: Install required packages
+          apt:
+            name:
+              - docker.io
+              - docker-compose
+              - libnss3-tools
+              - tree
+              - neovim
+            state: present
+            update_cache: yes
+            cache_valid_time: 3600
 
-    - name: Deploy monitoring static files (alert rules, Grafana datasource, dashboard provider and dashboard)
-      copy:
-        src: "{{ item.src | default(omit) }}"
-        content: "{{ item.content | default(omit) }}"
-        dest: "{{ monitoring_dir }}/{{ item.dest }}"
-        mode: '0644'
-      loop:
-        - { src: monitoring/alerts.yml, dest: alerts.yml }
-        - { src: monitoring/pi-hosts.json, dest: dashboards/pi-hosts.json }
-        - dest: provisioning/datasources/victoriametrics.yml
-          content: |
-            apiVersion: 1
-            datasources:
-              - name: VictoriaMetrics
-                uid: victoriametrics
-                type: prometheus
-                access: proxy
-                url: http://victoria-metrics:8428
-                isDefault: true
-        - dest: provisioning/dashboards/homelab.yml
-          content: |
-            apiVersion: 1
-            providers:
-              - name: homelab
-                type: file
-                allowUiUpdates: false
-                updateIntervalSeconds: 60
-                options:
-                  path: /var/lib/grafana-dashboards
-      loop_control:
-        label: "{{ item.dest }}"
-      when: with_monitoring_hub | bool
-      register: monitoring_statics
+        - name: Ensure Docker service is running
+          systemd:
+            name: docker
+            state: started
+            enabled: yes
 
-    - name: Deploy .env file
-      template:
-        src: env.j2
-        dest: "{{ nextcloud_base_dir }}/.env"
-        mode: '0600'
-      register: env_file
+        - name: Add ansible user to docker group
+          user:
+            name: "{{ ansible_user }}"
+            groups: docker
+            append: yes
 
-    - name: Deploy docker-compose.yml
-      template:
-        src: docker-compose.yml.j2
-        dest: "{{ nextcloud_base_dir }}/docker-compose.yml"
-        mode: '0644'
-      register: compose_file
+        - name: Stop existing Docker Compose stack and remove volumes (clean install only)
+          command:
+            cmd: docker-compose down -v
+            chdir: "{{ nextcloud_base_dir }}"
+          ignore_errors: yes
+          when: clean_install | bool
 
-    - name: Deploy Apache HSTS configuration
-      template:
-        src: apache-hsts.conf.j2
-        dest: "{{ nextcloud_base_dir }}/apache-hsts.conf"
-        mode: '0644'
-      register: hsts_file
+        - name: Remove Nextcloud base directory (clean install only)
+          file:
+            path: "{{ nextcloud_base_dir }}"
+            state: absent
+          when: clean_install | bool
 
-    - name: Create systemd service for the Nextcloud stack
-      copy:
-        content: |
-          [Unit]
-          Description=Nextcloud Docker Compose Stack{{ '' if stack_env == 'prod' else ' (' ~ stack_env ~ ')' }}
-          Requires=docker.service
-          After=docker.service network-online.target
-          Wants=network-online.target
+        - name: Ensure base directories exist
+          file:
+            path: "{{ item }}"
+            state: directory
+            mode: '0755'
+          loop: "{{ base_dirs + proxy_dirs }}"
+          vars:
+            base_dirs:
+              - "{{ nextcloud_data_dir }}"
+              - "{{ mariadb_data_dir }}"
+              - "{{ redis_data_dir }}"
+            proxy_dirs: "{{ [nginx_data_dir] if with_proxy | bool else [] }}"
+
+        # Monitoring hub: Grafana runs as uid 472 and Alertmanager as nobody (65534); VictoriaMetrics as root.
+        - name: Ensure monitoring directories exist
+          file:
+            path: "{{ item.path }}"
+            state: directory
+            owner: "{{ item.owner | default('root') }}"
+            mode: '0755'
+          loop:
+            - { path: "{{ monitoring_dir }}" }
+            - { path: "{{ monitoring_dir }}/vm-data" }
+            - { path: "{{ monitoring_dir }}/alertmanager-data", owner: '65534' }
+            - { path: "{{ monitoring_dir }}/grafana-data", owner: '472' }
+            - { path: "{{ monitoring_dir }}/dashboards" }
+            - { path: "{{ monitoring_dir }}/provisioning" }
+            - { path: "{{ monitoring_dir }}/provisioning/datasources" }
+            - { path: "{{ monitoring_dir }}/provisioning/dashboards" }
+          loop_control:
+            label: "{{ item.path }}"
+          when: with_monitoring_hub | bool
+
+        - name: Deploy monitoring configuration (scrape targets, alert rules, Grafana provisioning and dashboard)
+          template:
+            src: "{{ item.src }}"
+            dest: "{{ monitoring_dir }}/{{ item.dest }}"
+            owner: "{{ item.owner | default('root') }}"
+            mode: "{{ item.mode | default('0644') }}"
+          loop:
+            - { src: scrape.yml.j2, dest: scrape.yml }
+            - { src: alertmanager.yml.j2, dest: alertmanager.yml, owner: '65534', mode: '0600' }
+          loop_control:
+            label: "{{ item.dest }}"
+          when: with_monitoring_hub | bool
+          no_log: true
+          register: monitoring_templates
+
+        - name: Deploy monitoring static files (alert rules, Grafana datasource, dashboard provider and dashboard)
+          copy:
+            src: "{{ item.src | default(omit) }}"
+            content: "{{ item.content | default(omit) }}"
+            dest: "{{ monitoring_dir }}/{{ item.dest }}"
+            mode: '0644'
+          loop:
+            - { src: monitoring/alerts.yml, dest: alerts.yml }
+            - { src: monitoring/pi-hosts.json, dest: dashboards/pi-hosts.json }
+            - dest: provisioning/datasources/victoriametrics.yml
+              content: |
+                apiVersion: 1
+                datasources:
+                  - name: VictoriaMetrics
+                    uid: victoriametrics
+                    type: prometheus
+                    access: proxy
+                    url: http://victoria-metrics:8428
+                    isDefault: true
+            - dest: provisioning/dashboards/homelab.yml
+              content: |
+                apiVersion: 1
+                providers:
+                  - name: homelab
+                    type: file
+                    allowUiUpdates: false
+                    updateIntervalSeconds: 60
+                    options:
+                      path: /var/lib/grafana-dashboards
+          loop_control:
+            label: "{{ item.dest }}"
+          when: with_monitoring_hub | bool
+          register: monitoring_statics
+
+        - name: Deploy .env file
+          template:
+            src: env.j2
+            dest: "{{ nextcloud_base_dir }}/.env"
+            mode: '0600'
+          register: env_file
+
+        - name: Deploy docker-compose.yml
+          template:
+            src: docker-compose.yml.j2
+            dest: "{{ nextcloud_base_dir }}/docker-compose.yml"
+            mode: '0644'
+          register: compose_file
+
+        - name: Deploy Apache HSTS configuration
+          template:
+            src: apache-hsts.conf.j2
+            dest: "{{ nextcloud_base_dir }}/apache-hsts.conf"
+            mode: '0644'
+          register: hsts_file
+
+        - name: Create systemd service for the Nextcloud stack
+          copy:
+            content: |
+              [Unit]
+              Description=Nextcloud Docker Compose Stack{{ '' if stack_env == 'prod' else ' (' ~ stack_env ~ ')' }}
+              Requires=docker.service
+              After=docker.service network-online.target
+              Wants=network-online.target
           
-          [Service]
-          Type=oneshot
-          RemainAfterExit=yes
-          WorkingDirectory={{ nextcloud_base_dir }}
-          ExecStart=/usr/bin/docker-compose up -d
-          ExecStop=/usr/bin/docker-compose down
-          TimeoutStartSec=300
-          TimeoutStopSec=120
+              [Service]
+              Type=oneshot
+              RemainAfterExit=yes
+              WorkingDirectory={{ nextcloud_base_dir }}
+              ExecStart=/usr/bin/docker-compose up -d
+              ExecStop=/usr/bin/docker-compose down
+              TimeoutStartSec=300
+              TimeoutStopSec=120
           
-          [Install]
-          WantedBy=multi-user.target
-        dest: /etc/systemd/system/{{ stack_service }}.service
-        mode: '0644'
-      register: unit_file
+              [Install]
+              WantedBy=multi-user.target
+            dest: /etc/systemd/system/{{ stack_service }}.service
+            mode: '0644'
+          register: unit_file
 
-    - name: Determine whether the stack must be restarted
-      set_fact:
-        stack_config_changed: "{{ [env_file, compose_file, hsts_file, unit_file] | select('changed') | list | length > 0 }}"
+        - name: Determine whether the stack must be restarted
+          set_fact:
+            stack_config_changed: "{{ [env_file, compose_file, hsts_file, unit_file] | select('changed') | list | length > 0 }}"
 
-    # New image tags (e.g. from a merged Renovate PR) are downloaded while the old stack is still
-    # running, so the downtime is only the restart and the systemd start timeout (300s) is not
-    # spent on slow pulls. Pulling can be slow on a small host, hence the 30 minute task timeout.
-    - name: Pull container images (configuration changed)
-      command: docker-compose pull
-      args:
-        chdir: "{{ nextcloud_base_dir }}"
-      timeout: 1800
-      when: stack_config_changed | bool
+        # New image tags (e.g. from a merged Renovate PR) are downloaded while the old stack is still
+        # running, so the downtime is only the restart and the systemd start timeout (300s) is not
+        # spent on slow pulls. Pulling can be slow on a small host, hence the 30 minute task timeout.
+        - name: Pull container images (configuration changed)
+          command: docker-compose pull
+          args:
+            chdir: "{{ nextcloud_base_dir }}"
+          timeout: 1800
+          when: stack_config_changed | bool
 
-    # Only restart when a deployed file changed; otherwise the run causes no downtime.
-    - name: Restart Nextcloud stack (configuration changed)
-      systemd:
-        name: "{{ stack_service }}"
-        state: restarted
-        daemon_reload: yes
-      when: stack_config_changed | bool
+        # Only restart when a deployed file changed; otherwise the run causes no downtime.
+        - name: Restart Nextcloud stack (configuration changed)
+          systemd:
+            name: "{{ stack_service }}"
+            state: restarted
+            daemon_reload: yes
+          when: stack_config_changed | bool
 
-    - name: Ensure Nextcloud stack service is enabled and running
-      systemd:
-        name: "{{ stack_service }}"
-        enabled: yes
-        state: started
+        - name: Ensure Nextcloud stack service is enabled and running
+          systemd:
+            name: "{{ stack_service }}"
+            enabled: yes
+            state: started
 
-    # Config of the hub's containers changed but the compose/.env did not: restart just those (Grafana reloads
-    # its dashboards by itself), so Nextcloud is not touched.
-    - name: Restart monitoring containers (their configuration changed)
-      command: docker-compose restart victoria-metrics alertmanager vmalert
-      args:
-        chdir: "{{ nextcloud_base_dir }}"
-      when:
-        - with_monitoring_hub | bool
-        - not (stack_config_changed | bool)
-        - (monitoring_templates.results | default([]) + monitoring_statics.results | default([])) | select('changed') | list | length > 0
+        # Config of the hub's containers changed but the compose/.env did not: restart just those (Grafana reloads
+        # its dashboards by itself), so Nextcloud is not touched.
+        - name: Restart monitoring containers (their configuration changed)
+          command: docker-compose restart victoria-metrics alertmanager vmalert
+          args:
+            chdir: "{{ nextcloud_base_dir }}"
+          when:
+            - with_monitoring_hub | bool
+            - not (stack_config_changed | bool)
+            - (monitoring_templates.results | default([]) + monitoring_statics.results | default([])) | select('changed') | list | length > 0
 
-    - name: Create occ helper script
-      copy:
-        content: |
-          #!/bin/bash
-          # Nextcloud occ command helper
-          docker exec -u www-data {{ container_app }} php occ "$@"
-        dest: "{{ occ_helper }}"
-        mode: '0755'
+        - name: Create occ helper script
+          copy:
+            content: |
+              #!/bin/bash
+              # Nextcloud occ command helper
+              docker exec -u www-data {{ container_app }} php occ "$@"
+            dest: "{{ occ_helper }}"
+            mode: '0755'
 
-    - name: Wait for Nextcloud to finish starting (copying files, upgrading)
-      include_tasks: tasks/wait_nextcloud.yml
+        - name: Wait for Nextcloud to finish starting (copying files, upgrading)
+          include_tasks: tasks/wait_nextcloud.yml
 
-    # Slow on large instances: only after a restart (e.g. image upgrade) or with -e run_repair=true
-    - name: Repair Nextcloud and add missing database indices
-      include_tasks: tasks/repair_nextcloud.yml
-      when: stack_config_changed | bool or run_repair | bool
+        # Slow on large instances: only after a restart (e.g. image upgrade) or with -e run_repair=true
+        - name: Repair Nextcloud and add missing database indices
+          include_tasks: tasks/repair_nextcloud.yml
+          when: stack_config_changed | bool or run_repair | bool
 
-    - name: Read current Nextcloud system config
-      command: "{{ occ_helper }} config:system:get {{ item.key }}"
-      loop: "{{ nextcloud_system_config }}"
-      loop_control:
-        label: "{{ item.key }}"
-      register: system_config_current
-      changed_when: false
-      failed_when: false
+        - name: Read current Nextcloud system config
+          command: "{{ occ_helper }} config:system:get {{ item.key }}"
+          loop: "{{ nextcloud_system_config }}"
+          loop_control:
+            label: "{{ item.key }}"
+          register: system_config_current
+          changed_when: false
+          failed_when: false
 
-    - name: Set Nextcloud system config
-      command: >-
-        {{ occ_helper }} config:system:set {{ item.item.key }}
-        --value={{ item.item.value | string | quote }}
-        {% if item.item.type is defined %}--type={{ item.item.type }}{% endif %}
-      loop: "{{ system_config_current.results }}"
-      loop_control:
-        label: "{{ item.item.key }}"
-      when: item.rc != 0 or item.stdout != (item.item.value | string)
+        - name: Set Nextcloud system config
+          command: >-
+            {{ occ_helper }} config:system:set {{ item.item.key }}
+            --value={{ item.item.value | string | quote }}
+            {% if item.item.type is defined %}--type={{ item.item.type }}{% endif %}
+          loop: "{{ system_config_current.results }}"
+          loop_control:
+            label: "{{ item.item.key }}"
+          when: item.rc != 0 or item.stdout != (item.item.value | string)
 
-    - name: Read first run wizard setting
-      command: "{{ occ_helper }} config:app:get firstrunwizard wizard_enabled"
-      register: firstrunwizard_current
-      changed_when: false
-      failed_when: false
+        - name: Read first run wizard setting
+          command: "{{ occ_helper }} config:app:get firstrunwizard wizard_enabled"
+          register: firstrunwizard_current
+          changed_when: false
+          failed_when: false
 
-    - name: Disable Nextcloud first run wizard
-      command: "{{ occ_helper }} config:app:set --value false firstrunwizard wizard_enabled"
-      when: firstrunwizard_current.rc != 0 or firstrunwizard_current.stdout != 'false'
+        - name: Disable Nextcloud first run wizard
+          command: "{{ occ_helper }} config:app:set --value false firstrunwizard wizard_enabled"
+          when: firstrunwizard_current.rc != 0 or firstrunwizard_current.stdout != 'false'
 
-    # The account the end-to-end test logs in with
-    - name: Create the Nextcloud test account
-      include_tasks: tasks/test_account.yml
-      when: not ansible_check_mode
+        # The account the end-to-end test logs in with
+        - name: Create the Nextcloud test account
+          include_tasks: tasks/test_account.yml
+          when: not ansible_check_mode
 
-    # The certificate and the proxy hosts (docs: README, "HTTPS / Nginx Proxy Manager"). Skipped in --check
-    # runs because they would call the NPM API.
-    - name: Configure Nginx Proxy Manager (certificate and proxy hosts)
-      include_tasks: tasks/npm.yml
-      when: with_proxy | bool and not ansible_check_mode
+        # The certificate and the proxy hosts (docs: README, "HTTPS / Nginx Proxy Manager"). Skipped in --check
+        # runs because they would call the NPM API.
+        - name: Configure Nginx Proxy Manager (certificate and proxy hosts)
+          include_tasks: tasks/npm.yml
+          when: with_proxy | bool and not ansible_check_mode
 
-    # Last step: log in to the deployed Nextcloud with a real browser. A failure fails the run (the deployment
-    # itself is done by then; nothing is rolled back). Skip it with --skip-tags e2e.
-    - name: End-to-end test of the deployed Nextcloud
-      include_tasks: tasks/e2e.yml
-      when: not ansible_check_mode
-      tags: e2e
+        # Last step: log in to the deployed Nextcloud with a real browser. A failure fails the run (the deployment
+        # itself is done by then; nothing is rolled back). Skip it with --skip-tags e2e.
+        - name: End-to-end test of the deployed Nextcloud
+          include_tasks: tasks/e2e.yml
+          when: not ansible_check_mode
+          tags: e2e
 
-    - name: Display deployment information
-      debug:
-        msg: "{{ lines }}"
-      vars:
-        lines:
-          - "Nextcloud ({{ stack_env }}) has been deployed successfully!"
-          - "Access Nextcloud at: https://{{ nextcloud_domain }}"
-          - "{{ ('Nginx Proxy Manager: https://' ~ proxy_domain) if with_proxy | bool else '' }}"
-          - "Admin username: {{ nextcloud_admin_user }}"
-          - "Please check the .env file for credentials at {{ nextcloud_base_dir }}/.env"
-          - ""
-          - "To run occ commands, use: {{ occ_helper | basename }} <command>"
-          - "Example: {{ occ_helper | basename }} maintenance:mode --on"
+        - name: Display deployment information
+          debug:
+            msg: "{{ lines }}"
+          vars:
+            lines:
+              - "Nextcloud ({{ stack_env }}) has been deployed successfully!"
+              - "Access Nextcloud at: https://{{ nextcloud_domain }}"
+              - "{{ ('Nginx Proxy Manager: https://' ~ proxy_domain) if with_proxy | bool else '' }}"
+              - "Admin username: {{ nextcloud_admin_user }}"
+              - "Please check the .env file for credentials at {{ nextcloud_base_dir }}/.env"
+              - ""
+              - "To run occ commands, use: {{ occ_helper | basename }} <command>"
+              - "Example: {{ occ_helper | basename }} maintenance:mode --on"
+
+        - name: Audit the finished deploy
+          include_tasks: tasks/audit_deploy.yml
+          vars:
+            audit_status: ok
+          tags: always
+
+      rescue:
+        - name: Audit the failed deploy
+          include_tasks: tasks/audit_deploy.yml
+          vars:
+            audit_status: failed
+            audit_detail: "{{ ansible_failed_task.name | default('unknown') }}"
+          tags: always
+
+        - name: Fail the deploy
+          fail:
+            msg: "Deploy failed at task '{{ ansible_failed_task.name | default('unknown') }}': {{ ansible_failed_result.msg | default('see the output above') }}"
+          tags: always

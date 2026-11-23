@@ -1,0 +1,33 @@
+---
+# Sends `telegram_text` to the Telegram chat of the monitoring alerts (TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID from
+# SecretSpec; optional, so without them it does nothing). Included by audit_deploy.yml and e2e.yml.
+# Runs on the machine you deploy from. A failed send only warns: it must never hide or cause a failure of its own.
+# no_log: the URL contains the bot token (-e npm_debug=true shows it, like the NPM tasks).
+- name: Send a Telegram message
+  uri:
+    url: "https://api.telegram.org/bot{{ telegram_bot_token }}/sendMessage"
+    method: POST
+    body_format: json
+    body:
+      chat_id: "{{ telegram_chat_id }}"
+      text: "{{ telegram_text }}"
+    timeout: 15
+  register: telegram_result
+  failed_when: false
+  changed_when: false
+  no_log: "{{ not (npm_debug | default(false) | bool) }}"
+  when:
+    - (telegram_bot_token | string | length) > 0
+    - (telegram_chat_id | string | length) > 0
+    - not ansible_check_mode
+  delegate_to: localhost
+  become: false
+  run_once: true
+  tags: always
+
+- name: Warn when the Telegram message could not be sent
+  debug:
+    msg: "The Telegram message was not delivered (HTTP {{ telegram_result.status | default('?') }})."
+  when: telegram_result is not skipped and telegram_result.status | default(0) != 200
+  run_once: true
+  tags: always

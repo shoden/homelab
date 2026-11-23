@@ -1,0 +1,19 @@
+---
+# Audit trail of a deploy: tells the Telegram chat that it finished, succeeded or failed. Included by deploy.yml
+# (last step of the block, and in its rescue). Needs `audit_status` (ok | failed) and, for a failure,
+# `audit_detail`. Skipped with deploy_telegram_notify=false and in --check runs.
+- name: Work out how long the deploy took
+  set_fact:
+    audit_seconds: "{{ (now(utc=true).strftime('%s') | int) - (deploy_started | default(now(utc=true).strftime('%s')) | int) }}"
+  run_once: true
+  tags: always
+
+- name: Tell Telegram how the deploy finished
+  include_tasks: telegram_notify.yml
+  vars:
+    telegram_text: >-
+      {{ '🚀 Deploy OK' if audit_status == 'ok' else '❌ Deploy FAILED' }} ({{ stack_env | default('?') }},
+      {{ inventory_hostname }}) after {{ audit_seconds }}s.
+      {{ ('Failed task: ' ~ audit_detail) if audit_status != 'ok' else ('https://' ~ nextcloud_domain) }}
+  when: deploy_telegram_notify | bool
+  tags: always
