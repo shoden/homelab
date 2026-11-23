@@ -11,6 +11,8 @@ Ansible playbooks for a self-hosted homelab. Currently they deploy a Nextcloud s
 | Redis | `nextcloud-redis` | `redis:8.2.4-alpine` | — |
 | Nginx Proxy Manager | `nextcloud-proxy` | `jc21/nginx-proxy-manager:2.14.0` | 80, 443, 81 (admin UI) |
 
+Monitoring (see [Monitoring](#monitoring)): every environment also runs `nextcloud-node-exporter` (`prom/node-exporter`, port 9100 on the host network), and the hub environment adds `nextcloud-victoria-metrics`, `nextcloud-vmalert`, `nextcloud-alertmanager` and `nextcloud-grafana` (behind the proxy).
+
 All containers share the `nextcloud-network` bridge network. Nextcloud waits for MariaDB and Redis to pass their healthchecks before starting. Nginx Proxy Manager handles TLS and proxies to `nextcloud-app:80`. It stores its own config in the same MariaDB database.
 
 ## Repository layout
@@ -229,6 +231,18 @@ Things to know:
 - **Let's Encrypt limits:** a repeatedly failing request counts toward its rate limits, so get it working in dev first.
 - **NPM updates:** the API is not a stable public contract, so try NPM upgrades in dev before prod.
 
+## Monitoring
+
+Every environment exposes its host's metrics (`node_exporter`, port 9100). **One** environment is the hub (here `dev`, `with_monitoring_hub: true`): it scrapes all the hosts, stores 30 days of history, shows them in a Grafana dashboard (**Pi hosts**: current values on top, trends below, host selector) and sends alerts to Telegram. Everything is lightweight and open source (VictoriaMetrics, vmalert, Alertmanager, Grafana; about 300-400 MB of RAM on the hub, about 15 MB on the other hosts), works offline and writes little to the SD card.
+
+1. In the hub's `inventory/<env>/group_vars/nextcloud/main.yml` (see `inventory.example/dev`): `with_monitoring_hub: true`, `grafana_domain` (covered by the NPM certificate, and its DNS record pointing at the hub) and `monitoring_targets`, one `{ name, address }` per host including the hub itself. Use **IP addresses** (containers cannot resolve `*.local`).
+2. Secrets for the hub's profile: `GRAFANA_ADMIN_PASSWORD`, `TELEGRAM_BOT_TOKEN` (create a bot with @BotFather) and `TELEGRAM_CHAT_ID` (message the bot, then open `https://api.telegram.org/bot<token>/getUpdates` and copy `chat.id`; negative for groups). `secretspec set <NAME> --profile dev`.
+3. Deploy every environment (`./run.sh deploy.yml prod`, then `dev`). Open `https://<grafana_domain>`, user `admin`.
+
+Alert rules are in `playbooks/files/monitoring/alerts.yml`: host down, rebooted, CPU, load, memory, swap, disk full / filling up, read-only filesystem (SD card errors), SoC temperature. Change thresholds there and redeploy the hub (only the monitoring containers restart). The dashboard is `playbooks/files/monitoring/pi-hosts.json`; it is provisioned read-only, so edit a copy in Grafana and export it to the repo.
+
+Limits: the hub cannot alert about its own death (nothing is left to send it), so keep an eye on it from outside (for example Uptime Kuma on another machine). Port 9100 has no authentication: only allow it from the hub with a firewall, or set `node_exporter_listen` to the LAN address. The dashboard and alerts only use node metrics; per-container metrics and Nextcloud-level checks are not included.
+
 ## Accessing
 
 Everything is reached over HTTPS through its own subdomain:
@@ -335,4 +349,5 @@ RENOVATE_TOKEN=... ./renovate.sh   # open/update the PRs on GitHub from your mac
 - `<base dir>/.env` on the host contains every secret and has mode 0600.
 - Secrets live only in your SecretSpec provider (`secretspec.toml` holds names, never values). `inventory/` is gitignored and holds no credentials.
 - Passwords set in SecretSpec only take effect when MariaDB, Nextcloud and Nginx Proxy Manager first initialise. Changing one later does not change the live account. Change it in the service as well (`ALTER USER`, `nextcloud-occ user:resetpassword`, the NPM UI).
+- Port 9100 (node_exporter, every host) serves metrics without a login; only the hub needs it (see Monitoring).
 - Port 81 (proxy admin) is also published directly on the host over plain HTTP. It is needed for the first login, before any proxy host exists. Once the subdomains work, block it with a firewall so the applications are only reachable over HTTPS.

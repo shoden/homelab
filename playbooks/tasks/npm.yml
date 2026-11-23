@@ -127,7 +127,7 @@
 
 - name: Create or update each proxy host
   include_tasks: npm_proxy_host.yml
-  loop: "{{ npm_proxy_hosts }}"
+  loop: "{{ npm_proxy_hosts + (npm_proxy_hosts_grafana if with_monitoring_hub | bool else []) }}"
   loop_control:
     loop_var: npm_host
     label: "{{ npm_host.domain }}"

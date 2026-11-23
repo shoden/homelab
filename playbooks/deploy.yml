@@ -61,7 +61,26 @@
         quiet: true
       vars:
         env_safe_password: '^[A-Za-z0-9!%&()*+,./:;<=>?@^_~\[\]{}|-]+$'
-      loop: "{{ ['mysql_root_password', 'nextcloud_admin_password', 'nextcloud_test_password'] + (['nginx_admin_password'] if with_proxy | bool else []) }}"
+      loop: "{{ ['mysql_root_password', 'nextcloud_admin_password', 'nextcloud_test_password'] + (['nginx_admin_password'] if with_proxy | bool else []) + (['grafana_admin_password'] if with_monitoring_hub | bool else []) }}"
+      tags: always
+
+    - name: Check the monitoring hub settings
+      assert:
+        that:
+          - with_proxy | bool
+          - (grafana_domain | default('') | length) > 0
+          - not (grafana_domain | default('') is search('example\\.(com|org)'))
+          - monitoring_targets | length > 0
+          - monitoring_targets | selectattr('name', 'defined') | selectattr('address', 'defined') | list | length == monitoring_targets | length
+          - telegram_bot_token is match('^[0-9]+:[A-Za-z0-9_-]+$')
+          - telegram_chat_id is match('^-?[0-9]+$')
+        fail_msg: >-
+          The monitoring hub needs with_proxy, grafana_domain and monitoring_targets (a list of
+          {name, address}) in inventory/{{ stack_env }}/group_vars/nextcloud/main.yml, and TELEGRAM_BOT_TOKEN
+          (like 123456:ABC-def), TELEGRAM_CHAT_ID (a number) and GRAFANA_ADMIN_PASSWORD in SecretSpec
+          (`secretspec set <NAME> --profile {{ stack_env }}`).
+        quiet: true
+      when: with_monitoring_hub | bool
       tags: always
 
   tasks:
@@ -114,6 +133,75 @@
           - "{{ mariadb_data_dir }}"
           - "{{ redis_data_dir }}"
         proxy_dirs: "{{ [nginx_data_dir] if with_proxy | bool else [] }}"
+
+    # Monitoring hub: Grafana runs as uid 472 and Alertmanager as nobody (65534); VictoriaMetrics as root.
+    - name: Ensure monitoring directories exist
+      file:
+        path: "{{ item.path }}"
+        state: directory
+        owner: "{{ item.owner | default('root') }}"
+        mode: '0755'
+      loop:
+        - { path: "{{ monitoring_dir }}" }
+        - { path: "{{ monitoring_dir }}/vm-data" }
+        - { path: "{{ monitoring_dir }}/alertmanager-data", owner: '65534' }
+        - { path: "{{ monitoring_dir }}/grafana-data", owner: '472' }
+        - { path: "{{ monitoring_dir }}/dashboards" }
+        - { path: "{{ monitoring_dir }}/provisioning" }
+        - { path: "{{ monitoring_dir }}/provisioning/datasources" }
+        - { path: "{{ monitoring_dir }}/provisioning/dashboards" }
+      loop_control:
+        label: "{{ item.path }}"
+      when: with_monitoring_hub | bool
+
+    - name: Deploy monitoring configuration (scrape targets, alert rules, Grafana provisioning and dashboard)
+      template:
+        src: "{{ item.src }}"
+        dest: "{{ monitoring_dir }}/{{ item.dest }}"
+        owner: "{{ item.owner | default('root') }}"
+        mode: "{{ item.mode | default('0644') }}"
+      loop:
+        - { src: scrape.yml.j2, dest: scrape.yml }
+        - { src: alertmanager.yml.j2, dest: alertmanager.yml, owner: '65534', mode: '0600' }
+      loop_control:
+        label: "{{ item.dest }}"
+      when: with_monitoring_hub | bool
+      no_log: true
+      register: monitoring_templates
+
+    - name: Deploy monitoring static files (alert rules, Grafana datasource, dashboard provider and dashboard)
+      copy:
+        src: "{{ item.src | default(omit) }}"
+        content: "{{ item.content | default(omit) }}"
+        dest: "{{ monitoring_dir }}/{{ item.dest }}"
+        mode: '0644'
+      loop:
+        - { src: monitoring/alerts.yml, dest: alerts.yml }
+        - { src: monitoring/pi-hosts.json, dest: dashboards/pi-hosts.json }
+        - dest: provisioning/datasources/victoriametrics.yml
+          content: |
+            apiVersion: 1
+            datasources:
+              - name: VictoriaMetrics
+                uid: victoriametrics
+                type: prometheus
+                access: proxy
+                url: http://victoria-metrics:8428
+                isDefault: true
+        - dest: provisioning/dashboards/homelab.yml
+          content: |
+            apiVersion: 1
+            providers:
+              - name: homelab
+                type: file
+                allowUiUpdates: false
+                updateIntervalSeconds: 60
+                options:
+                  path: /var/lib/grafana-dashboards
+      loop_control:
+        label: "{{ item.dest }}"
+      when: with_monitoring_hub | bool
+      register: monitoring_statics
 
     - name: Deploy .env file
       template:
@@ -187,6 +275,17 @@
         name: "{{ stack_service }}"
         enabled: yes
         state: started
+
+    # Config of the hub's containers changed but the compose/.env did not: restart just those (Grafana reloads
+    # its dashboards by itself), so Nextcloud is not touched.
+    - name: Restart monitoring containers (their configuration changed)
+      command: docker-compose restart victoria-metrics alertmanager vmalert
+      args:
+        chdir: "{{ nextcloud_base_dir }}"
+      when:
+        - with_monitoring_hub | bool
+        - not (stack_config_changed | bool)
+        - (monitoring_templates.results | default([]) + monitoring_statics.results | default([])) | select('changed') | list | length > 0
 
     - name: Create occ helper script
       copy:

@@ -1,0 +1,81 @@
+# Alert rules evaluated by vmalert (PromQL). Every series carries `host` (the name from monitoring_targets).
+# Keep annotations free of < and > characters.
+groups:
+  - name: pi-hosts
+    interval: 30s
+    rules:
+      - alert: HostDown
+        expr: up{job="node"} == 0
+        for: 3m
+        labels: {severity: critical}
+        annotations:
+          summary: "{{ $labels.host }} is not answering (no metrics for 3 minutes)"
+
+      - alert: HostRebooted
+        expr: (time() - node_boot_time_seconds) < 300
+        labels: {severity: info}
+        annotations:
+          summary: "{{ $labels.host }} rebooted less than 5 minutes ago"
+
+      - alert: HighCpu
+        expr: 100 - avg by (host) (rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100 > 90
+        for: 15m
+        labels: {severity: warning}
+        annotations:
+          summary: "{{ $labels.host }}: CPU at {{ $value | printf \"%.0f\" }}% for 15 minutes"
+
+      - alert: HighLoad
+        expr: node_load5 / count by (host) (node_cpu_seconds_total{mode="idle"}) > 2
+        for: 15m
+        labels: {severity: warning}
+        annotations:
+          summary: "{{ $labels.host }}: load per core is {{ $value | printf \"%.1f\" }} for 15 minutes"
+
+      - alert: HighMemory
+        expr: (1 - node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes) * 100 > 90
+        for: 10m
+        labels: {severity: warning}
+        annotations:
+          summary: "{{ $labels.host }}: memory at {{ $value | printf \"%.0f\" }}% for 10 minutes"
+
+      - alert: HeavySwapping
+        expr: (1 - node_memory_SwapFree_bytes / node_memory_SwapTotal_bytes) * 100 > 50 and node_memory_SwapTotal_bytes > 0
+        for: 15m
+        labels: {severity: warning}
+        annotations:
+          summary: "{{ $labels.host }}: swap {{ $value | printf \"%.0f\" }}% used (slow and wears the SD card)"
+
+      - alert: DiskAlmostFull
+        expr: (1 - node_filesystem_avail_bytes{fstype!~"tmpfs|overlay|squashfs|rootfs"} / node_filesystem_size_bytes{fstype!~"tmpfs|overlay|squashfs|rootfs"}) * 100 > 90
+        for: 10m
+        labels: {severity: warning}
+        annotations:
+          summary: "{{ $labels.host }}: {{ $labels.mountpoint }} is {{ $value | printf \"%.0f\" }}% full"
+
+      - alert: DiskFullIn24h
+        expr: predict_linear(node_filesystem_avail_bytes{mountpoint="/"}[6h], 24 * 3600) < 0 and node_filesystem_avail_bytes{mountpoint="/"} > 0
+        for: 1h
+        labels: {severity: warning}
+        annotations:
+          summary: "{{ $labels.host }}: / will run out of space within 24 hours at the current rate"
+
+      - alert: FilesystemReadOnly
+        expr: node_filesystem_readonly{mountpoint="/", fstype!~"tmpfs|overlay|squashfs|rootfs"} == 1
+        for: 1m
+        labels: {severity: critical}
+        annotations:
+          summary: "{{ $labels.host }}: / is mounted read-only (SD card errors?)"
+
+      - alert: HighTemperature
+        expr: max by (host) (node_hwmon_temp_celsius) > 75
+        for: 5m
+        labels: {severity: warning}
+        annotations:
+          summary: "{{ $labels.host }}: SoC at {{ $value | printf \"%.0f\" }} C (a Pi throttles at 80 C)"
+
+      - alert: CriticalTemperature
+        expr: max by (host) (node_hwmon_temp_celsius) > 82
+        for: 2m
+        labels: {severity: critical}
+        annotations:
+          summary: "{{ $labels.host }}: SoC at {{ $value | printf \"%.0f\" }} C, it is throttling"

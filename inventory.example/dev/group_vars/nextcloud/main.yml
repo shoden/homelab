@@ -9,5 +9,15 @@ nextcloud_domain: cloud.dev.example.com       # public domain served by this env
 npm_certificate_domains: "dev.example.com,*.dev.example.com"
 proxy_domain: proxy.dev.example.com           # Nginx Proxy Manager's own admin UI
 
+# Monitoring hub (this environment): VictoriaMetrics + Grafana + Telegram alerts for every Pi. Every environment
+# exposes node_exporter on port 9100; the hub scrapes the addresses below (this host included). Needs GRAFANA_ADMIN_PASSWORD,
+# TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID in SecretSpec (see secretspec.toml).
+with_monitoring_hub: true
+grafana_domain: grafana.dev.example.com       # covered by the certificate above
+# Use IP addresses (static or reserved in the router): containers cannot resolve mDNS names (*.local)
+monitoring_targets:
+  - { name: dev, address: "192.168.1.10:9100" }
+  - { name: prod, address: "192.168.1.11:9100" }
+
 # Optional overrides (defaults live in playbooks/group_vars/all/defaults.yml)
 # timezone: Europe/Madrid

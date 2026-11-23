@@ -12,6 +12,11 @@ container_app: "{{ stack_name }}-app"
 container_db: "{{ stack_name }}-mariadb"
 container_redis: "{{ stack_name }}-redis"
 container_proxy: "{{ stack_name }}-proxy"
+container_node_exporter: "{{ stack_name }}-node-exporter"
+container_metrics: "{{ stack_name }}-victoria-metrics"
+container_vmalert: "{{ stack_name }}-vmalert"
+container_alertmanager: "{{ stack_name }}-alertmanager"
+container_grafana: "{{ stack_name }}-grafana"
 stack_service: "{{ stack_name }}-stack"                # systemd unit
 occ_helper: "/usr/local/bin/{{ stack_name }}-occ"   
 occ: "docker exec -u www-data {{ container_app }} php occ"
@@ -20,6 +25,20 @@ occ: "docker exec -u www-data {{ container_app }} php occ"
 # environment. Each environment is meant to run on its own host: two stacks that both enable it cannot share
 # one (the ports clash). Set it to false in an inventory to leave it out.
 with_proxy: true
+
+# --- Monitoring ---------------------------------------------------------------------------------------------
+# with_node_exporter: every environment exposes its host's metrics (node_exporter, port 9100 on the LAN: do not
+# forward it to the internet; restrict it to the hub with a firewall or set node_exporter_listen to the LAN address).
+# with_monitoring_hub: ONE environment (here: dev) also runs VictoriaMetrics + vmalert + Alertmanager (Telegram) +
+# Grafana and scrapes every address in monitoring_targets. The hub needs with_proxy (Grafana is served at grafana_domain).
+with_node_exporter: true
+node_exporter_listen: "0.0.0.0:9100"
+with_monitoring_hub: false
+monitoring_dir: "{{ nextcloud_base_dir }}/monitoring"
+monitoring_retention: 30d
+monitoring_scrape_interval: 30s
+# Hub only, in the inventory: [{ name: dev, address: "192.168.1.10:9100" }, { name: prod, address: "192.168.1.11:9100" }]
+monitoring_targets: []
 
 nextcloud_base_dir: "/opt/{{ stack_name }}"
 nextcloud_data_dir: "{{ nextcloud_base_dir }}/app"
@@ -46,6 +65,9 @@ nextcloud_test_password: "{{ lookup('ansible.builtin.env', 'NEXTCLOUD_TEST_PASSW
 ovh_application_key: "{{ lookup('ansible.builtin.env', 'OVH_APPLICATION_KEY') }}"
 ovh_application_secret: "{{ lookup('ansible.builtin.env', 'OVH_APPLICATION_SECRET') }}"
 ovh_consumer_key: "{{ lookup('ansible.builtin.env', 'OVH_CONSUMER_KEY') }}"
+grafana_admin_password: "{{ lookup('ansible.builtin.env', 'GRAFANA_ADMIN_PASSWORD') }}"
+telegram_bot_token: "{{ lookup('ansible.builtin.env', 'TELEGRAM_BOT_TOKEN') }}"
+telegram_chat_id: "{{ lookup('ansible.builtin.env', 'TELEGRAM_CHAT_ID') }}"
 
 # --- End-to-end test (tasks/test_account.yml creates the account, tasks/e2e.yml runs e2e/ with Playwright) ----
 # Directory of the Playwright project, on the machine you deploy from
@@ -71,6 +93,8 @@ npm_debug: false
 npm_proxy_hosts:
   - { domain: "{{ nextcloud_domain }}", host: "{{ container_app }}", port: 80 }
   - { domain: "{{ proxy_domain }}", host: "{{ container_proxy }}", port: 81 }
+npm_proxy_hosts_grafana:
+  - { domain: "{{ grafana_domain | default('') }}", host: "{{ container_grafana }}", port: 3000 }
 nextcloud_port: 8080
 
 # Clean install: true removes all volumes and /opt/nextcloud (development only).
