@@ -115,6 +115,12 @@
   set_fact:
     npm_cert_id: "{{ npm_cert_created.json.id if npm_cert_id == '' else npm_cert_id }}"
 
+# Tells deploy.yml that the proxy changed, so the end-to-end test runs
+- name: Note that NPM issued a certificate
+  set_fact:
+    npm_changed: true
+  when: npm_cert_created.changed | default(false)
+
 # ---- proxy hosts -----------------------------------------------------------------------------------------
 - name: List the NPM proxy hosts
   uri:

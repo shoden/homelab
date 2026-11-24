@@ -112,6 +112,8 @@ e2e_reset_password: false
 # true: show the browser while the end-to-end test runs (needs a display on the machine you deploy from).
 # e2e_slow_mo: milliseconds to pause after each action when watching (empty = 400 when headed, 0 otherwise)
 e2e_headed: false
+# e2e_force: deploy.yml runs the test only when the deploy changed something relevant; true runs it every time
+e2e_force: false
 e2e_slow_mo: ""
 # e2e_telegram_alert: on failure, send a Telegram message (needs the TELEGRAM_* secrets in this environment's profile)
 e2e_telegram_alert: true

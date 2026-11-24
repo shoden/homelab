@@ -66,3 +66,9 @@
       {{ npm_host_result.json.error.message | default('no message') }}).
     quiet: true
   when: npm_host_result is not skipped
+
+# Tells deploy.yml that the proxy changed, so the end-to-end test runs
+- name: Note that NPM changed
+  set_fact:
+    npm_changed: true
+  when: npm_host_result.changed | default(false)

@@ -399,6 +399,7 @@
           loop_control:
             label: "{{ item.item.key }}"
           when: item.rc != 0 or item.stdout != (item.item.value | string)
+          register: system_config_set
 
         - name: Read first run wizard setting
           command: "{{ occ_helper }} config:app:get firstrunwizard wizard_enabled"
@@ -422,10 +423,16 @@
           when: with_proxy | bool and not ansible_check_mode
 
         # Last step: log in to the deployed Nextcloud with a real browser. A failure fails the run (the deployment
-        # itself is done by then; nothing is rolled back). Skip it with --skip-tags e2e.
+        # itself is done by then; nothing is rolled back). Skip it with --skip-tags e2e. It only runs when the
+        # deploy changed something that can affect Nextcloud (stack restarted, Nextcloud settings, test account,
+        # NPM certificate or proxy hosts) or a repair was requested; -e e2e_force=true runs it regardless.
         - name: End-to-end test of the deployed Nextcloud
           include_tasks: tasks/e2e.yml
-          when: not ansible_check_mode
+          when:
+            - not ansible_check_mode
+            - e2e_force | bool or stack_config_changed | bool or run_repair | bool
+              or system_config_set is changed or test_user_info.rc | default(0) != 0
+              or npm_changed | default(false) | bool
           tags: e2e
 
         - name: Display deployment information
