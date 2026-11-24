@@ -397,7 +397,7 @@
    },
    "targets": [
     {
-     "expr": "node_load5{host=~\"$host\"} / count by (host) (node_cpu_seconds_total{mode=\"idle\",host=~\"$host\"})",
+     "expr": "avg by (host) (node_load5{host=~\"$host\"}) / count by (host) (node_cpu_seconds_total{mode=\"idle\",host=~\"$host\"})",
      "legendFormat": "{{host}}",
      "instant": true,
      "refId": "A",
@@ -738,7 +738,7 @@
    },
    "targets": [
     {
-     "expr": "node_load5{host=~\"$host\"} / count by (host) (node_cpu_seconds_total{mode=\"idle\",host=~\"$host\"})",
+     "expr": "avg by (host) (node_load5{host=~\"$host\"}) / count by (host) (node_cpu_seconds_total{mode=\"idle\",host=~\"$host\"})",
      "legendFormat": "{{host}}",
      "refId": "A",
      "datasource": {
