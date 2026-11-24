@@ -224,6 +224,7 @@
           loop:
             - { src: monitoring/alerts.yml, dest: alerts.yml }
             - { src: monitoring/pi-hosts.json, dest: dashboards/pi-hosts.json }
+            - { src: monitoring/logs.json, dest: dashboards/logs.json }
             - dest: provisioning/datasources/victoriametrics.yml
               content: |
                 apiVersion: 1

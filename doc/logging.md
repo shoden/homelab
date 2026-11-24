@@ -41,6 +41,15 @@ vector ── journald (system)
 - Only the journal of the current boot is read on a fresh start, and only directories that exist on the host are
   mounted (`/var/log/journal` and/or `/run/log/journal`).
 
+## Dashboard
+
+Grafana provisions a read-only **Logs** dashboard (`playbooks/files/monitoring/logs.json`, uid `homelab-logs`):
+pipeline health (rows ingested, shippers up/down, rows dropped, disk used and % of the cap), ingest rate, events
+sent per host, disk vs cap, shipper errors, and, from the VictoriaLogs data source, log volume per host, an
+errors panel and the latest logs. The *Shipper host* variable comes from the metrics (host = `monitoring_targets`
+name); *Environment* (`dev`, `prod`) filters the log panels by the `host` field of the logs (= `stack_env`).
+The dashboard reloads by itself within a minute of a deploy; no restart is needed.
+
 ## Alerts (to the same Telegram chat)
 
 They come from metrics, so the existing vmalert evaluates them (rules in `playbooks/files/monitoring/alerts.yml`, group
