@@ -50,6 +50,23 @@
           "value": "$__all"
         },
         "options": []
+      },
+      {
+        "name": "container",
+        "label": "Container (regex)",
+        "type": "textbox",
+        "query": ".*",
+        "current": {
+          "text": ".*",
+          "value": ".*"
+        },
+        "options": [
+          {
+            "selected": true,
+            "text": ".*",
+            "value": ".*"
+          }
+        ]
       }
     ]
   },
@@ -660,6 +677,113 @@
       ]
     },
     {
+      "id": 17,
+      "type": "row",
+      "title": "By container",
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 31
+      },
+      "panels": []
+    },
+    {
+      "id": 18,
+      "type": "timeseries",
+      "title": "Log volume by container (lines per interval)",
+      "datasource": {
+        "type": "victoriametrics-logs-datasource",
+        "uid": "victorialogs"
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 12,
+        "x": 0,
+        "y": 32
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "drawStyle": "bars",
+            "fillOpacity": 60,
+            "stacking": {
+              "mode": "normal"
+            }
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "right",
+          "calcs": [
+            "sum"
+          ]
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "victoriametrics-logs-datasource",
+            "uid": "victorialogs"
+          },
+          "refId": "A",
+          "queryType": "statsRange",
+          "expr": "{host=~\"$env\", container_name=~\".+\"} | stats by (container_name) count() logs"
+        }
+      ]
+    },
+    {
+      "id": 19,
+      "type": "timeseries",
+      "title": "Error lines by container (lines per interval)",
+      "datasource": {
+        "type": "victoriametrics-logs-datasource",
+        "uid": "victorialogs"
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 12,
+        "x": 12,
+        "y": 32
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "drawStyle": "bars",
+            "fillOpacity": 60,
+            "stacking": {
+              "mode": "normal"
+            }
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "right",
+          "calcs": [
+            "sum"
+          ]
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "victoriametrics-logs-datasource",
+            "uid": "victorialogs"
+          },
+          "refId": "A",
+          "queryType": "statsRange",
+          "expr": "{host=~\"$env\", container_name=~\".+\"} ~\"(?i)(error|fail|panic|fatal)\" | stats by (container_name) count() errors"
+        }
+      ]
+    },
+    {
       "id": 15,
       "type": "logs",
       "title": "Errors (error, fail, panic, fatal)",
@@ -669,39 +793,6 @@
       },
       "gridPos": {
         "h": 10,
-        "w": 24,
-        "x": 0,
-        "y": 31
-      },
-      "options": {
-        "showTime": true,
-        "wrapLogMessage": true,
-        "sortOrder": "Descending",
-        "enableLogDetails": true
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "victoriametrics-logs-datasource",
-            "uid": "victorialogs"
-          },
-          "refId": "A",
-          "queryType": "instant",
-          "maxLines": 200,
-          "expr": "{host=~\"$env\"} ~\"(?i)(error|fail|panic|fatal)\""
-        }
-      ]
-    },
-    {
-      "id": 16,
-      "type": "logs",
-      "title": "Latest logs",
-      "datasource": {
-        "type": "victoriametrics-logs-datasource",
-        "uid": "victorialogs"
-      },
-      "gridPos": {
-        "h": 12,
         "w": 24,
         "x": 0,
         "y": 41
@@ -721,7 +812,40 @@
           "refId": "A",
           "queryType": "instant",
           "maxLines": 200,
-          "expr": "{host=~\"$env\"}"
+          "expr": "{host=~\"$env\", container_name=~\"$container\"} ~\"(?i)(error|fail|panic|fatal)\""
+        }
+      ]
+    },
+    {
+      "id": 16,
+      "type": "logs",
+      "title": "Latest logs",
+      "datasource": {
+        "type": "victoriametrics-logs-datasource",
+        "uid": "victorialogs"
+      },
+      "gridPos": {
+        "h": 12,
+        "w": 24,
+        "x": 0,
+        "y": 51
+      },
+      "options": {
+        "showTime": true,
+        "wrapLogMessage": true,
+        "sortOrder": "Descending",
+        "enableLogDetails": true
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "victoriametrics-logs-datasource",
+            "uid": "victorialogs"
+          },
+          "refId": "A",
+          "queryType": "instant",
+          "maxLines": 200,
+          "expr": "{host=~\"$env\", container_name=~\"$container\"}"
         }
       ]
     }
