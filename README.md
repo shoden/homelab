@@ -27,8 +27,13 @@ playbooks/
   group_vars/all/        defaults.yml: project defaults
 inventory.example/       templates for your site settings: prod/ and dev/ (copy them to inventory/, which is gitignored)
 renovate.json, renovate.sh, .github/workflows/   dependency updates
-doc/                     extra documentation
+doc/                     extra documentation; doc/architecture/ has the C4 diagrams (Structurizr)
+architecture.sh          serve | check | export the architecture diagrams
 ```
+
+## Architecture
+
+C4 diagrams (context, containers, deploy flow, per-environment deployment, backup): [doc/architecture/](doc/architecture/README.md), rendered in [diagrams.md](doc/architecture/diagrams.md).
 
 ## Prerequisites
 

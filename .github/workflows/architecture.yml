@@ -1,0 +1,24 @@
+name: Architecture
+
+on:
+  pull_request:
+    paths:
+      - 'doc/architecture/**'
+      - 'architecture.sh'
+      - '.github/workflows/architecture.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  diagrams:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Validate the DSL
+        run: ./architecture.sh check
+      - name: Check that the committed diagrams are up to date
+        run: |
+          ./architecture.sh export
+          git diff --exit-code --stat -- doc/architecture || {
+            echo "::error::doc/architecture is out of date: run ./architecture.sh export and commit"; exit 1; }

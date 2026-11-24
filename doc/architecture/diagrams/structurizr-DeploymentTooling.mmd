@@ -1,0 +1,47 @@
+graph LR
+  linkStyle default fill:#ffffff
+
+  subgraph diagram ["Container View: Deployment tooling"]
+    style diagram fill:#ffffff,stroke:#ffffff
+
+    1["<div style='font-weight: bold'>Operator</div><div style='font-size: 70%; margin-top: 0px'>[Person]</div><div style='font-size: 80%; margin-top:10px'>Runs the playbooks from the<br />control machine.</div>"]
+    style 1 fill:#1f4e79,stroke:#153654,color:#ffffff
+    5["<div style='font-weight: bold'>Telegram</div><div style='font-size: 70%; margin-top: 0px'>[Software System]</div><div style='font-size: 80%; margin-top:10px'>Receives deploy audit<br />messages and monitoring<br />alerts.</div>"]
+    style 5 fill:#8a8f98,stroke:#60646a,color:#ffffff
+    7["<div style='font-weight: bold'>SecretSpec</div><div style='font-size: 70%; margin-top: 0px'>[Software System]</div><div style='font-size: 80%; margin-top:10px'>Credential store on the<br />control machine, one profile<br />per environment.</div>"]
+    style 7 fill:#8a8f98,stroke:#60646a,color:#ffffff
+    8["<div style='font-weight: bold'>Nextcloud stack</div><div style='font-size: 70%; margin-top: 0px'>[Software System]</div><div style='font-size: 80%; margin-top:10px'>Nextcloud with its database,<br />cache and TLS proxy, plus the<br />host's monitoring and log<br />agents. One instance per<br />environment.</div>"]
+    style 8 fill:#2b6cb0,stroke:#1e4b7b,color:#ffffff
+    24["<div style='font-weight: bold'>Monitoring hub</div><div style='font-size: 70%; margin-top: 0px'>[Software System]</div><div style='font-size: 80%; margin-top:10px'>Metrics, logs, alerting and<br />dashboards for all<br />environments. Runs only on<br />the hub environment<br />(with_monitoring_hub).</div>"]
+    style 24 fill:#2b6cb0,stroke:#1e4b7b,color:#ffffff
+
+    subgraph 35 ["Deployment tooling"]
+      style 35 fill:#ffffff,stroke:#1e4b7b,color:#1e4b7b
+
+      36["<div style='font-weight: bold'>run.sh</div><div style='font-size: 70%; margin-top: 0px'>[Container: Bash]</div><div style='font-size: 80%; margin-top:10px'>Picks the playbook and<br />environment (fzf), runs it<br />inside `secretspec run`.</div>"]
+      style 36 fill:#3f84c6,stroke:#2c5c8a,color:#ffffff
+      37["<div style='font-weight: bold'>Ansible playbooks</div><div style='font-size: 70%; margin-top: 0px'>[Container: Ansible]</div><div style='font-size: 80%; margin-top:10px'>deploy, backup, restore,<br />reboot, shutdown,<br />maintenance_on/off, e2e. Flat<br />project, no roles.</div>"]
+      style 37 fill:#3f84c6,stroke:#2c5c8a,color:#ffffff
+      45["<div style='font-weight: bold'>Playwright project</div><div style='font-size: 70%; margin-top: 0px'>[Container: Playwright, Chromium]</div><div style='font-size: 80%; margin-top:10px'>Browser test of the deployed<br />environment (e2e/).</div>"]
+      style 45 fill:#3f84c6,stroke:#2c5c8a,color:#ffffff
+      46["<div style='font-weight: bold'>Logs certificate</div><div style='font-size: 70%; margin-top: 0px'>[Container: OpenSSL]</div><div style='font-size: 80%; margin-top:10px'>Self-signed certificate for<br />VictoriaLogs, created in<br />certs/ and copied to the hub<br />and each shipper.</div>"]
+      style 46 fill:#3f84c6,stroke:#2c5c8a,color:#ffffff
+      47[("<div style='font-weight: bold'>Backups</div><div style='font-size: 70%; margin-top: 0px'>[Container: Directory]</div><div style='font-size: 80%; margin-top:10px'>On each host in backup_dir<br />(outside the base dir): DB<br />dump, Nextcloud volume (no<br />user files), proxy data,<br />config. Pruned to<br />backup_keep.</div>")]
+      style 47 fill:#3f84c6,stroke:#2c5c8a,color:#ffffff
+    end
+
+    24-. "<div>Sends alerts</div><div style='font-size: 70%'>[HTTPS]</div>" .->5
+    1-. "<div>Runs</div><div style='font-size: 70%'>[./run.sh deploy.yml prod]</div>" .->36
+    36-. "<div>Starts, with credentials as<br />environment variables</div><div style='font-size: 70%'></div>" .->37
+    37-. "<div>Runs on the control machine</div><div style='font-size: 70%'></div>" .->45
+    37-. "<div>Generates</div><div style='font-size: 70%'></div>" .->46
+    36-. "<div>Gets credentials</div><div style='font-size: 70%'>[secretspec run --profile]</div>" .->7
+    37-. "<div>Installs, restarts, stops</div><div style='font-size: 70%'>[SSH, sudo]</div>" .->8
+    37-. "<div>Writes and prunes</div><div style='font-size: 70%'>[SSH]</div>" .->47
+    37-. "<div>Provisions dashboards and<br />data sources</div><div style='font-size: 70%'>[Files over SSH]</div>" .->24
+    37-. "<div>Deploy OK / FAILED</div><div style='font-size: 70%'>[HTTPS]</div>" .->5
+    45-. "<div>Logs in, uploads, checks<br />WebDAV, deletes</div><div style='font-size: 70%'>[HTTPS]</div>" .->8
+    8-. "<div>Proxies to</div><div style='font-size: 70%'>[HTTP]</div>" .->24
+    24-. "<div>Scrapes, per environment</div><div style='font-size: 70%'>[HTTP 9100]</div>" .->8
+
+  end

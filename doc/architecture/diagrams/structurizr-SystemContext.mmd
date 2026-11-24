@@ -1,0 +1,23 @@
+graph LR
+  linkStyle default fill:#ffffff
+
+  subgraph diagram ["System Context View: Nextcloud stack"]
+    style diagram fill:#ffffff,stroke:#ffffff
+
+    2["<div style='font-weight: bold'>User</div><div style='font-size: 70%; margin-top: 0px'>[Person]</div><div style='font-size: 80%; margin-top:10px'>Uses Nextcloud from a<br />browser, the desktop or the<br />mobile app (web and WebDAV).</div>"]
+    style 2 fill:#1f4e79,stroke:#153654,color:#ffffff
+    3["<div style='font-weight: bold'>Let's Encrypt</div><div style='font-size: 70%; margin-top: 0px'>[Software System]</div><div style='font-size: 80%; margin-top:10px'>Issues the TLS certificate<br />(DNS-01 challenge).</div>"]
+    style 3 fill:#8a8f98,stroke:#60646a,color:#ffffff
+    35["<div style='font-weight: bold'>Deployment tooling</div><div style='font-size: 70%; margin-top: 0px'>[Software System]</div><div style='font-size: 80%; margin-top:10px'>Ansible project that deploys<br />and operates the stacks over<br />SSH.</div>"]
+    style 35 fill:#2b6cb0,stroke:#1e4b7b,color:#ffffff
+    4["<div style='font-weight: bold'>OVH DNS</div><div style='font-size: 70%; margin-top: 0px'>[Software System]</div><div style='font-size: 80%; margin-top:10px'>Holds the domain's DNS zone;<br />receives the DNS-01 challenge<br />records.</div>"]
+    style 4 fill:#8a8f98,stroke:#60646a,color:#ffffff
+    8["<div style='font-weight: bold'>Nextcloud stack</div><div style='font-size: 70%; margin-top: 0px'>[Software System]</div><div style='font-size: 80%; margin-top:10px'>Nextcloud with its database,<br />cache and TLS proxy, plus the<br />host's monitoring and log<br />agents. One instance per<br />environment.</div>"]
+    style 8 fill:#2b6cb0,stroke:#1e4b7b,color:#ffffff
+
+    2-. "<div>Browses and syncs</div><div style='font-size: 70%'>[HTTPS 443]</div>" .->8
+    35-. "<div>Installs, restarts, stops</div><div style='font-size: 70%'>[SSH, sudo]</div>" .->8
+    8-. "<div>Requests certificate</div><div style='font-size: 70%'>[ACME]</div>" .->3
+    8-. "<div>DNS-01 challenge records</div><div style='font-size: 70%'>[HTTPS API]</div>" .->4
+
+  end

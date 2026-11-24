@@ -8,3 +8,8 @@ e2e/playwright-report/
 
 # TLS certificate and key of the logs (created by deploy.yml)
 certs/
+
+# Structurizr server state (architecture.sh serve)
+doc/architecture/.structurizr/
+doc/architecture/workspace.json
+doc/architecture/site/

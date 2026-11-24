@@ -1,0 +1,38 @@
+graph LR
+  linkStyle default fill:#ffffff
+
+  subgraph diagram ["Dynamic View: Deployment tooling"]
+    style diagram fill:#ffffff,stroke:#ffffff
+
+    subgraph 35 ["Deployment tooling"]
+      style 35 fill:#ffffff,stroke:#1e4b7b,color:#1e4b7b
+
+      36["<div style='font-weight: bold'>run.sh</div><div style='font-size: 70%; margin-top: 0px'>[Container: Bash]</div><div style='font-size: 80%; margin-top:10px'>Picks the playbook and<br />environment (fzf), runs it<br />inside `secretspec run`.</div>"]
+      style 36 fill:#3f84c6,stroke:#2c5c8a,color:#ffffff
+      37["<div style='font-weight: bold'>Ansible playbooks</div><div style='font-size: 70%; margin-top: 0px'>[Container: Ansible]</div><div style='font-size: 80%; margin-top:10px'>deploy, backup, restore,<br />reboot, shutdown,<br />maintenance_on/off, e2e. Flat<br />project, no roles.</div>"]
+      style 37 fill:#3f84c6,stroke:#2c5c8a,color:#ffffff
+      47[("<div style='font-weight: bold'>Backups</div><div style='font-size: 70%; margin-top: 0px'>[Container: Directory]</div><div style='font-size: 80%; margin-top:10px'>On each host in backup_dir<br />(outside the base dir): DB<br />dump, Nextcloud volume (no<br />user files), proxy data,<br />config. Pruned to<br />backup_keep.</div>")]
+      style 47 fill:#3f84c6,stroke:#2c5c8a,color:#ffffff
+    end
+
+    subgraph 8 ["Nextcloud stack"]
+      style 8 fill:#ffffff,stroke:#1e4b7b,color:#1e4b7b
+
+      10["<div style='font-weight: bold'>nextcloud-app</div><div style='font-size: 70%; margin-top: 0px'>[Container: Nextcloud (Apache)]</div><div style='font-size: 80%; margin-top:10px'>Nextcloud; readiness is<br />status.php.</div>"]
+      style 10 fill:#3f84c6,stroke:#2c5c8a,color:#ffffff
+      11[("<div style='font-weight: bold'>nextcloud-mariadb</div><div style='font-size: 70%; margin-top: 0px'>[Container: MariaDB]</div><div style='font-size: 80%; margin-top:10px'>Nextcloud's database; also<br />holds the proxy's<br />configuration.</div>")]
+      style 11 fill:#3f84c6,stroke:#2c5c8a,color:#ffffff
+    end
+
+    1["<div style='font-weight: bold'>Operator</div><div style='font-size: 70%; margin-top: 0px'>[Person]</div><div style='font-size: 80%; margin-top:10px'>Runs the playbooks from the<br />control machine.</div>"]
+    style 1 fill:#1f4e79,stroke:#153654,color:#ffffff
+
+    1-. "<div>1. ./run.sh backup.yml prod</div><div style='font-size: 70%'>[./run.sh deploy.yml prod]</div>" .->36
+    36-. "<div>2. Runs backup.yml</div><div style='font-size: 70%'></div>" .->37
+    37-. "<div>3. Maintenance mode on</div><div style='font-size: 70%'>[docker exec over SSH]</div>" .->10
+    37-. "<div>4. Dump (MYSQL_PWD read<br />inside the container)</div><div style='font-size: 70%'>[docker exec over SSH]</div>" .->11
+    37-. "<div>5. Archive volume, proxy<br />data, config into<br /><ts>.partial</div><div style='font-size: 70%'>[SSH]</div>" .->47
+    37-. "<div>6. Rename to <ts>, prune to<br />backup_keep</div><div style='font-size: 70%'>[SSH]</div>" .->47
+    37-. "<div>7. Maintenance mode off<br />(always, if it turned it on)</div><div style='font-size: 70%'>[docker exec over SSH]</div>" .->10
+
+  end

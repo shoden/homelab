@@ -1,0 +1,50 @@
+graph LR
+  linkStyle default fill:#ffffff
+
+  subgraph diagram ["Container View: Nextcloud stack"]
+    style diagram fill:#ffffff,stroke:#ffffff
+
+    2["<div style='font-weight: bold'>User</div><div style='font-size: 70%; margin-top: 0px'>[Person]</div><div style='font-size: 80%; margin-top:10px'>Uses Nextcloud from a<br />browser, the desktop or the<br />mobile app (web and WebDAV).</div>"]
+    style 2 fill:#1f4e79,stroke:#153654,color:#ffffff
+    3["<div style='font-weight: bold'>Let's Encrypt</div><div style='font-size: 70%; margin-top: 0px'>[Software System]</div><div style='font-size: 80%; margin-top:10px'>Issues the TLS certificate<br />(DNS-01 challenge).</div>"]
+    style 3 fill:#8a8f98,stroke:#60646a,color:#ffffff
+    4["<div style='font-weight: bold'>OVH DNS</div><div style='font-size: 70%; margin-top: 0px'>[Software System]</div><div style='font-size: 80%; margin-top:10px'>Holds the domain's DNS zone;<br />receives the DNS-01 challenge<br />records.</div>"]
+    style 4 fill:#8a8f98,stroke:#60646a,color:#ffffff
+    35["<div style='font-weight: bold'>Deployment tooling</div><div style='font-size: 70%; margin-top: 0px'>[Software System]</div><div style='font-size: 80%; margin-top:10px'>Ansible project that deploys<br />and operates the stacks over<br />SSH.</div>"]
+    style 35 fill:#2b6cb0,stroke:#1e4b7b,color:#ffffff
+
+    subgraph 8 ["Nextcloud stack"]
+      style 8 fill:#ffffff,stroke:#1e4b7b,color:#1e4b7b
+
+      10["<div style='font-weight: bold'>nextcloud-app</div><div style='font-size: 70%; margin-top: 0px'>[Container: Nextcloud (Apache)]</div><div style='font-size: 80%; margin-top:10px'>Nextcloud; readiness is<br />status.php.</div>"]
+      style 10 fill:#3f84c6,stroke:#2c5c8a,color:#ffffff
+      11[("<div style='font-weight: bold'>nextcloud-mariadb</div><div style='font-size: 70%; margin-top: 0px'>[Container: MariaDB]</div><div style='font-size: 80%; margin-top:10px'>Nextcloud's database; also<br />holds the proxy's<br />configuration.</div>")]
+      style 11 fill:#3f84c6,stroke:#2c5c8a,color:#ffffff
+      12[("<div style='font-weight: bold'>nextcloud-redis</div><div style='font-size: 70%; margin-top: 0px'>[Container: Redis]</div><div style='font-size: 80%; margin-top:10px'>File locking and sessions.</div>")]
+      style 12 fill:#3f84c6,stroke:#2c5c8a,color:#ffffff
+      13["<div style='font-weight: bold'>nextcloud-node-exporter</div><div style='font-size: 70%; margin-top: 0px'>[Container: node-exporter]</div><div style='font-size: 80%; margin-top:10px'>Host metrics on port 9100<br />(host network).</div>"]
+      style 13 fill:#3f84c6,stroke:#2c5c8a,color:#ffffff
+      14["<div style='font-weight: bold'>nextcloud-vector</div><div style='font-size: 70%; margin-top: 0px'>[Container: Vector]</div><div style='font-size: 80%; margin-top:10px'>Ships journald and container<br />logs; disk buffer, HTTPS +<br />basic auth.</div>"]
+      style 14 fill:#3f84c6,stroke:#2c5c8a,color:#ffffff
+      15["<div style='font-weight: bold'>nextcloud-docker-proxy</div><div style='font-size: 70%; margin-top: 0px'>[Container: tecnativa/docker-socket-proxy]</div><div style='font-size: 80%; margin-top:10px'>Read-only Docker socket proxy<br />(CONTAINERS=1) on an internal<br />network, so Vector can read<br />container logs.</div>"]
+      style 15 fill:#3f84c6,stroke:#2c5c8a,color:#ffffff
+      16["<div style='font-weight: bold'>nextcloud-stack.service</div><div style='font-size: 70%; margin-top: 0px'>[Container: systemd, docker-compose]</div><div style='font-size: 80%; margin-top:10px'>systemd oneshot unit:<br />docker-compose up -d at boot,<br />down at shutdown. Restarted<br />by a deploy only if its<br />config changed.</div>"]
+      style 16 fill:#3f84c6,stroke:#2c5c8a,color:#ffffff
+      9["<div style='font-weight: bold'>nextcloud-proxy</div><div style='font-size: 70%; margin-top: 0px'>[Container: Nginx Proxy Manager]</div><div style='font-size: 80%; margin-top:10px'>TLS-terminating reverse proxy<br />(80/443, admin UI on 81).<br />Configured through its REST<br />API by deploy.yml.</div>"]
+      style 9 fill:#3f84c6,stroke:#2c5c8a,color:#ffffff
+    end
+
+    2-. "<div>Browses and syncs</div><div style='font-size: 70%'>[HTTPS 443]</div>" .->9
+    9-. "<div>Proxies to</div><div style='font-size: 70%'>[HTTP 80]</div>" .->10
+    10-. "<div>Reads and writes</div><div style='font-size: 70%'>[SQL]</div>" .->11
+    10-. "<div>Locks and sessions</div><div style='font-size: 70%'>[Redis]</div>" .->12
+    9-. "<div>Stores its config</div><div style='font-size: 70%'>[SQL]</div>" .->11
+    14-. "<div>Reads container logs</div><div style='font-size: 70%'>[HTTP, logs-network]</div>" .->15
+    35-. "<div>Installs, restarts, stops</div><div style='font-size: 70%'>[SSH, sudo]</div>" .->16
+    35-. "<div>occ commands, maintenance<br />mode, backup, restore</div><div style='font-size: 70%'>[docker exec over SSH]</div>" .->10
+    35-. "<div>Dumps and restores</div><div style='font-size: 70%'>[docker exec over SSH]</div>" .->11
+    35-. "<div>Creates certificate and proxy<br />hosts</div><div style='font-size: 70%'>[REST API]</div>" .->9
+    9-. "<div>Requests certificate</div><div style='font-size: 70%'>[ACME]</div>" .->3
+    9-. "<div>DNS-01 challenge records</div><div style='font-size: 70%'>[HTTPS API]</div>" .->4
+
+  end

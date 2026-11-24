@@ -1,0 +1,47 @@
+graph LR
+  linkStyle default fill:#ffffff
+
+  subgraph diagram ["Container View: Monitoring hub"]
+    style diagram fill:#ffffff,stroke:#ffffff
+
+    2["<div style='font-weight: bold'>User</div><div style='font-size: 70%; margin-top: 0px'>[Person]</div><div style='font-size: 80%; margin-top:10px'>Uses Nextcloud from a<br />browser, the desktop or the<br />mobile app (web and WebDAV).</div>"]
+    style 2 fill:#1f4e79,stroke:#153654,color:#ffffff
+    5["<div style='font-weight: bold'>Telegram</div><div style='font-size: 70%; margin-top: 0px'>[Software System]</div><div style='font-size: 80%; margin-top:10px'>Receives deploy audit<br />messages and monitoring<br />alerts.</div>"]
+    style 5 fill:#8a8f98,stroke:#60646a,color:#ffffff
+    8["<div style='font-weight: bold'>Nextcloud stack</div><div style='font-size: 70%; margin-top: 0px'>[Software System]</div><div style='font-size: 80%; margin-top:10px'>Nextcloud with its database,<br />cache and TLS proxy, plus the<br />host's monitoring and log<br />agents. One instance per<br />environment.</div>"]
+    style 8 fill:#2b6cb0,stroke:#1e4b7b,color:#ffffff
+    35["<div style='font-weight: bold'>Deployment tooling</div><div style='font-size: 70%; margin-top: 0px'>[Software System]</div><div style='font-size: 80%; margin-top:10px'>Ansible project that deploys<br />and operates the stacks over<br />SSH.</div>"]
+    style 35 fill:#2b6cb0,stroke:#1e4b7b,color:#ffffff
+
+    subgraph 24 ["Monitoring hub"]
+      style 24 fill:#ffffff,stroke:#1e4b7b,color:#1e4b7b
+
+      25[("<div style='font-weight: bold'>nextcloud-victoria-metrics</div><div style='font-size: 70%; margin-top: 0px'>[Container: VictoriaMetrics]</div><div style='font-size: 80%; margin-top:10px'>Scrapes the node-exporters<br />and Vector, and VictoriaLogs'<br />own metrics.</div>")]
+      style 25 fill:#3f84c6,stroke:#2c5c8a,color:#ffffff
+      26[("<div style='font-weight: bold'>nextcloud-victoria-logs</div><div style='font-size: 70%; margin-top: 0px'>[Container: VictoriaLogs]</div><div style='font-size: 80%; margin-top:10px'>Stores the shipped logs<br />(retention and disk cap<br />configurable). TLS<br />(self-signed) + basic auth on<br />9428 (LAN only).</div>")]
+      style 26 fill:#3f84c6,stroke:#2c5c8a,color:#ffffff
+      27["<div style='font-weight: bold'>nextcloud-vmalert</div><div style='font-size: 70%; margin-top: 0px'>[Container: vmalert]</div><div style='font-size: 80%; margin-top:10px'>Evaluates the alert rules<br />(alerts.yml, including log<br />alerts derived from metrics).</div>"]
+      style 27 fill:#3f84c6,stroke:#2c5c8a,color:#ffffff
+      28["<div style='font-weight: bold'>nextcloud-alertmanager</div><div style='font-size: 70%; margin-top: 0px'>[Container: Alertmanager]</div><div style='font-size: 80%; margin-top:10px'>Routes alerts to Telegram.</div>"]
+      style 28 fill:#3f84c6,stroke:#2c5c8a,color:#ffffff
+      29["<div style='font-weight: bold'>nextcloud-grafana</div><div style='font-size: 70%; margin-top: 0px'>[Container: Grafana]</div><div style='font-size: 80%; margin-top:10px'>Dashboards (provisioned,<br />read-only) over metrics and<br />logs; behind the proxy at its<br />own domain.</div>"]
+      style 29 fill:#3f84c6,stroke:#2c5c8a,color:#ffffff
+    end
+
+    8-. "<div>Ships logs, per environment</div><div style='font-size: 70%'>[HTTPS 9428, basic auth]</div>" .->26
+    28-. "<div>Sends alerts</div><div style='font-size: 70%'>[HTTPS]</div>" .->5
+    2-. "<div>Browses and syncs</div><div style='font-size: 70%'>[HTTPS 443]</div>" .->8
+    27-. "<div>Queries rules</div><div style='font-size: 70%'></div>" .->25
+    27-. "<div>Fires alerts</div><div style='font-size: 70%'></div>" .->28
+    29-. "<div>Queries</div><div style='font-size: 70%'>[HTTP]</div>" .->25
+    29-. "<div>Queries</div><div style='font-size: 70%'>[HTTPS, basic auth]</div>" .->26
+    25-. "<div>Scrapes metrics</div><div style='font-size: 70%'>[HTTPS, basic auth]</div>" .->26
+    35-. "<div>Installs, restarts, stops</div><div style='font-size: 70%'>[SSH, sudo]</div>" .->8
+    35-. "<div>Provisions dashboards and<br />data sources</div><div style='font-size: 70%'>[Files over SSH]</div>" .->29
+    35-. "<div>Provisions configuration</div><div style='font-size: 70%'>[Files over SSH]</div>" .->28
+    35-. "<div>Deploy OK / FAILED</div><div style='font-size: 70%'>[HTTPS]</div>" .->5
+    8-. "<div>Proxies to</div><div style='font-size: 70%'>[HTTP]</div>" .->29
+    2-. "<div>Browses dashboards</div><div style='font-size: 70%'>[HTTPS]</div>" .->29
+    25-. "<div>Scrapes, per environment</div><div style='font-size: 70%'>[HTTP 9100]</div>" .->8
+
+  end

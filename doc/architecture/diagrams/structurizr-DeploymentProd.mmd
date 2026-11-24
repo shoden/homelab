@@ -1,0 +1,46 @@
+graph LR
+  linkStyle default fill:#ffffff
+
+  subgraph diagram ["Deployment View: prod"]
+    style diagram fill:#ffffff,stroke:#ffffff
+
+    subgraph 106 ["Prod host"]
+      style 106 fill:#ffffff,stroke:#444444,color:#444444
+
+      subgraph 107 ["Docker"]
+        style 107 fill:#ffffff,stroke:#444444,color:#444444
+
+        108["<div style='font-weight: bold'>nextcloud-proxy</div><div style='font-size: 70%; margin-top: 0px'>[Container: Nginx Proxy Manager]</div><div style='font-size: 80%; margin-top:10px'>TLS-terminating reverse proxy<br />(80/443, admin UI on 81).<br />Configured through its REST<br />API by deploy.yml.</div>"]
+        style 108 fill:#3f84c6,stroke:#2c5c8a,color:#ffffff
+        109["<div style='font-weight: bold'>nextcloud-app</div><div style='font-size: 70%; margin-top: 0px'>[Container: Nextcloud (Apache)]</div><div style='font-size: 80%; margin-top:10px'>Nextcloud; readiness is<br />status.php.</div>"]
+        style 109 fill:#3f84c6,stroke:#2c5c8a,color:#ffffff
+        111[("<div style='font-weight: bold'>nextcloud-mariadb</div><div style='font-size: 70%; margin-top: 0px'>[Container: MariaDB]</div><div style='font-size: 80%; margin-top:10px'>Nextcloud's database; also<br />holds the proxy's<br />configuration.</div>")]
+        style 111 fill:#3f84c6,stroke:#2c5c8a,color:#ffffff
+        114[("<div style='font-weight: bold'>nextcloud-redis</div><div style='font-size: 70%; margin-top: 0px'>[Container: Redis]</div><div style='font-size: 80%; margin-top:10px'>File locking and sessions.</div>")]
+        style 114 fill:#3f84c6,stroke:#2c5c8a,color:#ffffff
+        116["<div style='font-weight: bold'>nextcloud-node-exporter</div><div style='font-size: 70%; margin-top: 0px'>[Container: node-exporter]</div><div style='font-size: 80%; margin-top:10px'>Host metrics on port 9100<br />(host network).</div>"]
+        style 116 fill:#3f84c6,stroke:#2c5c8a,color:#ffffff
+        117["<div style='font-weight: bold'>nextcloud-vector</div><div style='font-size: 70%; margin-top: 0px'>[Container: Vector]</div><div style='font-size: 80%; margin-top:10px'>Ships journald and container<br />logs; disk buffer, HTTPS +<br />basic auth.</div>"]
+        style 117 fill:#3f84c6,stroke:#2c5c8a,color:#ffffff
+        118["<div style='font-weight: bold'>nextcloud-docker-proxy</div><div style='font-size: 70%; margin-top: 0px'>[Container: tecnativa/docker-socket-proxy]</div><div style='font-size: 80%; margin-top:10px'>Read-only Docker socket proxy<br />(CONTAINERS=1) on an internal<br />network, so Vector can read<br />container logs.</div>"]
+        style 118 fill:#3f84c6,stroke:#2c5c8a,color:#ffffff
+      end
+
+      120["<div style='font-weight: bold'>nextcloud-stack.service</div><div style='font-size: 70%; margin-top: 0px'>[Infrastructure Node: systemd]</div><div style='font-size: 80%; margin-top:10px'>Starts the stack at boot.</div>"]
+      style 120 fill:#ffffff,stroke:#b2b2b2,color:#333333
+    end
+
+    subgraph 121 ["Monitoring hub host"]
+      style 121 fill:#ffffff,stroke:#444444,color:#444444
+
+      122["<div style='font-weight: bold'>Monitoring hub</div><div style='font-size: 70%; margin-top: 0px'>[Infrastructure Node: see the dev environment]</div><div style='font-size: 80%; margin-top:10px'>Victoria-metrics scrapes this<br />host; Vector ships logs to<br />victoria-logs.</div>"]
+      style 122 fill:#ffffff,stroke:#b2b2b2,color:#333333
+    end
+
+    108-. "<div>Proxies to</div><div style='font-size: 70%'>[HTTP 80]</div>" .->109
+    108-. "<div>Stores its config</div><div style='font-size: 70%'>[SQL]</div>" .->111
+    109-. "<div>Reads and writes</div><div style='font-size: 70%'>[SQL]</div>" .->111
+    109-. "<div>Locks and sessions</div><div style='font-size: 70%'>[Redis]</div>" .->114
+    117-. "<div>Reads container logs</div><div style='font-size: 70%'>[HTTP, logs-network]</div>" .->118
+
+  end
