@@ -1,0 +1,126 @@
+name: Trivy
+
+# Vulnerability scan (Aqua Security's Trivy) of the container images pinned in the compose template and of the
+# repository files (npm lockfile in e2e/, leaked secrets). Everything is reported to the Security tab (SARIF);
+# the job fails only on CRITICAL findings that have a fix. Locally: ./trivy.sh
+#
+# Actions are pinned to full commit SHAs (the comment has the release). Renovate can bump them.
+
+on:
+  pull_request:
+    paths:
+      - 'playbooks/templates/docker-compose.yml.j2'
+      - 'e2e/package.json'
+      - 'e2e/package-lock.json'
+      - '.trivyignore.yaml'
+      - 'trivy.sh'
+      - '.github/workflows/trivy.yml'
+  push:
+    branches: [main]
+  schedule:
+    - cron: '0 6 * * 1' # Mondays 06:00 UTC: new CVEs appear against tags that did not change
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  # accepted findings (YAML, scoped to a path inside the image, with an expiry date)
+  TRIVY_IGNOREFILE: .trivyignore.yaml
+
+jobs:
+  image-list:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.list.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - id: list
+        # one entry per image: the reference, and a name usable in a SARIF category
+        run: |
+          matrix="$(./trivy.sh list | jq -R -s -c 'split("\n") | map(select(length > 0)) | map({image: ., name: gsub("[/:]"; "-")})')"
+          echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
+
+  images:
+    needs: image-list
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write # upload the SARIF report
+    strategy:
+      fail-fast: false # one bad image must not hide the others
+      matrix:
+        include: ${{ fromJSON(needs.image-list.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Report all vulnerabilities (SARIF)
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: ${{ matrix.image }}
+          scanners: vuln
+          format: sarif
+          output: trivy-image.sarif
+          severity: UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL
+          exit-code: '0'
+
+      # A private repository without GitHub Advanced Security cannot take SARIF: warn, do not fail the scan.
+      - name: Upload the report to the Security tab
+        uses: github/codeql-action/upload-sarif@915412ff23e8b7659517e607487dbeae018f2934 # v4.39.5
+        continue-on-error: true
+        with:
+          sarif_file: trivy-image.sarif
+          category: trivy-image-${{ matrix.name }}
+
+      - name: Fail on CRITICAL vulnerabilities that have a fix
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: ${{ matrix.image }}
+          scanners: vuln
+          format: table
+          severity: CRITICAL
+          ignore-unfixed: true
+          exit-code: '1'
+
+  filesystem:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    env:
+      SKIP_DIRS: .git,e2e/node_modules,e2e/test-results,inventory,certs
+      # everything in e2e/ (Playwright) is a devDependency, which Trivy skips by default
+      TRIVY_INCLUDE_DEV_DEPS: 'true'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Report all vulnerabilities and secrets (SARIF)
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          scan-type: fs
+          scan-ref: .
+          scanners: vuln,secret
+          skip-dirs: ${{ env.SKIP_DIRS }}
+          format: sarif
+          output: trivy-fs.sarif
+          severity: UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL
+          exit-code: '0'
+
+      - name: Upload the report to the Security tab
+        uses: github/codeql-action/upload-sarif@915412ff23e8b7659517e607487dbeae018f2934 # v4.39.5
+        continue-on-error: true
+        with:
+          sarif_file: trivy-fs.sarif
+          category: trivy-fs
+
+      - name: Fail on CRITICAL vulnerabilities that have a fix, and on CRITICAL secrets
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          scan-type: fs
+          scan-ref: .
+          scanners: vuln,secret
+          skip-dirs: ${{ env.SKIP_DIRS }}
+          format: table
+          severity: CRITICAL
+          ignore-unfixed: true
+          exit-code: '1'

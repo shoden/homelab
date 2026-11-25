@@ -1,0 +1,12 @@
+# Findings accepted on purpose, used by trivy.sh and .github/workflows/trivy.yml (TRIVY_IGNOREFILE).
+# For each: the reason (statement) and an expiry date, so it gets looked at again. Scope with `paths` (the file
+# inside the image) so the same id found somewhere else still fails.
+vulnerabilities:
+  # mariadb image: its gosu binary is built with Go 1.24.6. gosu only drops privileges and execs the server at
+  # container start; it never opens a TLS connection, so the crypto/tls flaw is not reachable. Fixed in Go 1.24.13:
+  # drop this entry once a mariadb tag ships a rebuilt gosu (mariadb 13.0.2, 2026-11-12, still has the old one).
+  - id: CVE-2025-68121
+    paths:
+      - "usr/local/bin/gosu"
+    expired_at: 2027-02-24
+    statement: gosu does not use crypto/tls (it only drops privileges and execs), not reachable
