@@ -1,6 +1,7 @@
 [tools]
-python = "3.12.16"
-ansible = "13.8.0"
+python = "3.15.2"
+ansible = "15.0.0"
 fd = "latest"
 yq = "latest"
-node = "lts"
+node = "26.13.1"
+uv = "0.13.9"
