@@ -28,8 +28,13 @@ playbooks/
 inventory.example/       templates for your site settings: prod/ and dev/ (copy them to inventory/, which is gitignored)
 renovate.json, renovate.sh, .github/workflows/   dependency updates
 doc/                     extra documentation; doc/architecture/ has the C4 diagrams (Structurizr)
+trivy.sh                 vulnerability scan (Trivy) of the images and the e2e dependencies
 architecture.sh          serve | check | export the architecture diagrams
 ```
+
+## Vulnerability scan
+
+[Trivy](https://trivy.dev) scans the container images in the compose template and the `e2e/` npm lockfile, in CI (`.github/workflows/trivy.yml`: pull requests, pushes to main, weekly) and locally with `./trivy.sh` (needs Docker). All findings go to the repository's Security tab; the check fails only on CRITICAL vulnerabilities that have a fix. Accepted findings: `.trivyignore`.
 
 ## Architecture
 

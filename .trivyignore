@@ -1,0 +1,5 @@
+# Findings accepted on purpose, used by trivy.sh and .github/workflows/trivy.yml.
+# One id per line (a CVE id, or a secret rule id). For each: why it is accepted and until when, so it gets
+# looked at again. Example:
+#   CVE-2099-12345 exp:2027-03-01
+# (add a comment line above it with the reason)
