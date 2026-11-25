@@ -6,7 +6,7 @@
 #   ./trivy.sh fs        scan the repository files: the npm lockfile in e2e/ and leaked secrets
 #   ./trivy.sh           images and fs
 # Every finding is reported; the exit code is 1 only if a CRITICAL vulnerability that has a fix (or a CRITICAL
-# secret) is found. Accepted findings go in .trivyignore (with a reason and an expiry date).
+# secret) is found. Accepted findings go in .trivyignore.yaml (with a reason and an expiry date).
 # Override with TRIVY_IMAGE (the scanner image) and TRIVY_SEVERITY (what the report shows).
 set -euo pipefail
 cd "$(dirname "$0")"
@@ -35,7 +35,7 @@ failed=()
 # scan <kind> <target>: report everything, then gate on CRITICAL findings that have a fix
 scan() {
 	local kind="$1" target="$2"
-	local common=(--quiet)
+	local common=(--quiet --ignorefile .trivyignore.yaml)
 	local extra=()
 	if [ "$kind" = fs ]; then
 		# --include-dev-deps: everything in e2e/ (Playwright) is a devDependency, which Trivy skips by default

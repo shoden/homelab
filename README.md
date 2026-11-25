@@ -34,7 +34,7 @@ architecture.sh          serve | check | export the architecture diagrams
 
 ## Vulnerability scan
 
-[Trivy](https://trivy.dev) scans the container images in the compose template and the `e2e/` npm lockfile, in CI (`.github/workflows/trivy.yml`: pull requests, pushes to main, weekly) and locally with `./trivy.sh` (needs Docker). All findings go to the repository's Security tab; the check fails only on CRITICAL vulnerabilities that have a fix. Accepted findings: `.trivyignore`.
+[Trivy](https://trivy.dev) scans the container images in the compose template and the `e2e/` npm lockfile, in CI (`.github/workflows/trivy.yml`: pull requests, pushes to main, weekly) and locally with `./trivy.sh` (needs Docker). All findings go to the repository's Security tab; the check fails only on CRITICAL vulnerabilities that have a fix. Accepted findings: `.trivyignore.yaml`.
 
 ## Architecture
 

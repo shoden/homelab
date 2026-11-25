@@ -12,7 +12,7 @@ on:
       - 'playbooks/templates/docker-compose.yml.j2'
       - 'e2e/package.json'
       - 'e2e/package-lock.json'
-      - '.trivyignore'
+      - '.trivyignore.yaml'
       - 'trivy.sh'
       - '.github/workflows/trivy.yml'
   push:
@@ -23,6 +23,10 @@ on:
 
 permissions:
   contents: read
+
+env:
+  # accepted findings (YAML, scoped to a path inside the image, with an expiry date)
+  TRIVY_IGNOREFILE: .trivyignore.yaml
 
 jobs:
   image-list:
@@ -58,7 +62,6 @@ jobs:
           format: sarif
           output: trivy-image.sarif
           severity: UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL
-          trivyignores: .trivyignore
           exit-code: '0'
 
       # A private repository without GitHub Advanced Security cannot take SARIF: warn, do not fail the scan.
@@ -77,7 +80,6 @@ jobs:
           format: table
           severity: CRITICAL
           ignore-unfixed: true
-          trivyignores: .trivyignore
           exit-code: '1'
 
   filesystem:
@@ -102,7 +104,6 @@ jobs:
           format: sarif
           output: trivy-fs.sarif
           severity: UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL
-          trivyignores: .trivyignore
           exit-code: '0'
 
       - name: Upload the report to the Security tab
@@ -122,5 +123,4 @@ jobs:
           format: table
           severity: CRITICAL
           ignore-unfixed: true
-          trivyignores: .trivyignore
           exit-code: '1'
