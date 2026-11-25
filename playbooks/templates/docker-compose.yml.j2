@@ -23,7 +23,7 @@ services:
       - nextcloud-network
 
   redis:
-    image: redis:8.10.3-alpine
+    image: redis:8.12.0-alpine
     container_name: {{ container_redis }}
     restart: unless-stopped
     command: redis-server --requirepass ${REDIS_PASSWORD}
@@ -142,7 +142,7 @@ services:
       - nextcloud-network
 
   alertmanager:
-    image: prom/alertmanager:v0.35.0
+    image: prom/alertmanager:v0.35.1
     container_name: {{ container_alertmanager }}
     restart: unless-stopped
     command:
@@ -172,7 +172,7 @@ services:
       - nextcloud-network
 
   grafana:
-    image: grafana/grafana:13.3.1
+    image: grafana/grafana:13.3.2
     container_name: {{ container_grafana }}
     restart: unless-stopped
     environment:
