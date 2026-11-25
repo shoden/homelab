@@ -1,5 +1,5 @@
 [tools]
-python = "3.12.16"
+python = "3.15.2"
 ansible = "13.8.0"
 fd = "latest"
 yq = "latest"
