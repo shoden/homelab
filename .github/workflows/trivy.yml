@@ -30,7 +30,7 @@ env:
 
 jobs:
   image-list:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     outputs:
       matrix: ${{ steps.list.outputs.matrix }}
     steps:
@@ -43,7 +43,7 @@ jobs:
 
   images:
     needs: image-list
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     permissions:
       contents: read
       security-events: write # upload the SARIF report
@@ -83,7 +83,7 @@ jobs:
           exit-code: '1'
 
   filesystem:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     permissions:
       contents: read
       security-events: write

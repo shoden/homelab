@@ -10,7 +10,7 @@ permissions:
 
 jobs:
   renovate:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     steps:
       # Runs the Renovate container. RENOVATE_TOKEN is a repository secret (see README).
       - uses: renovatebot/github-action@v46.3.15
