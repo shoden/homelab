@@ -1,0 +1,40 @@
+---
+# Which commit and branch of this repository is being deployed (read on the machine you deploy from). Included by
+# deploy.yml at the start of its block, for the "only main goes to prod" check and the audit message. Sets
+# deploy_git_commit (short hash), deploy_git_branch ("HEAD" when detached) and deploy_git_url (the GitHub
+# repository URL); each is empty when it cannot be read (not a git checkout, no remote, a remote not on GitHub).
+- name: Read the git state of the repository being deployed
+  command: "git {{ item }}"
+  args:
+    chdir: "{{ playbook_dir }}"
+  loop:
+    - rev-parse --short HEAD
+    - rev-parse --abbrev-ref HEAD
+    - remote get-url origin
+  register: deploy_git_read
+  changed_when: false
+  failed_when: false
+  check_mode: false
+  delegate_to: localhost
+  become: false
+  run_once: true
+  tags: always
+
+# two regex_replace calls, with single backslashes (Jinja does not unescape them, so `\\.` would never match)
+- name: Remember the git state
+  set_fact:
+    deploy_git_commit: "{{ deploy_git_read.results[0].stdout | default('') | trim }}"
+    deploy_git_branch: "{{ deploy_git_read.results[1].stdout | default('') | trim }}"
+    deploy_git_url: >-
+      {{ (deploy_git_read.results[2].stdout | default('') | trim)
+      | regex_replace('^(git@|ssh://git@|https?://)github\.com[:/]', 'https://github.com/')
+      | regex_replace('\.git/?$', '') }}
+  run_once: true
+  tags: always
+
+- name: Ignore a remote that is not on GitHub
+  set_fact:
+    deploy_git_url: ""
+  when: not (deploy_git_url | string).startswith('https://github.com/')
+  run_once: true
+  tags: always

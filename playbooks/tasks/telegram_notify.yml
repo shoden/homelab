@@ -8,9 +8,8 @@
     url: "https://api.telegram.org/bot{{ telegram_bot_token }}/sendMessage"
     method: POST
     body_format: json
-    body:
-      chat_id: "{{ telegram_chat_id }}"
-      text: "{{ telegram_text }}"
+    # parse_mode (HTML) only when the caller sets telegram_parse_mode; the text must then be escaped by the caller
+    body: "{{ {'chat_id': telegram_chat_id, 'text': telegram_text, 'disable_web_page_preview': true} | combine({'parse_mode': telegram_parse_mode} if telegram_parse_mode is defined else {}) }}"
     timeout: 15
   register: telegram_result
   failed_when: false

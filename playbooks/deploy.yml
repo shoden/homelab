@@ -16,6 +16,10 @@
           run_once: true
           tags: always
 
+        - name: Read the git state (commit and branch being deployed)
+          include_tasks: tasks/git_state.yml
+          tags: always
+
         - name: Check the environment
           assert:
             that:
@@ -23,6 +27,17 @@
               - stack_env is match('^[a-z][a-z0-9]*$')
             fail_msg: "stack_env must be set in the inventory (prod, dev, ...): lowercase letters and digits, e.g. stack_env: dev"
             quiet: true
+          tags: always
+
+        - name: Only the default branch can be deployed to the protected environments
+          assert:
+            that: deploy_git_branch == deploy_default_branch
+            fail_msg: >-
+              {{ stack_env }} can only be deployed from the {{ deploy_default_branch }} branch, and this checkout is on
+              '{{ deploy_git_branch | default('unknown') }}' ('HEAD' means detached): switch to {{ deploy_default_branch }} (git switch {{ deploy_default_branch }}) or
+              deploy it to another environment.
+            quiet: true
+          when: stack_env in deploy_main_only_envs
           tags: always
 
         - name: Show the environment being deployed

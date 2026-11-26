@@ -119,6 +119,11 @@ e2e_slow_mo: ""
 e2e_telegram_alert: true
 # deploy_telegram_notify: deploy.yml tells Telegram when it finishes, succeeded or failed (tasks/audit_deploy.yml)
 deploy_telegram_notify: true
+# deploy_default_branch: the branch deploys normally come from; the Telegram message marks any other one (🧪)
+deploy_default_branch: main
+# deploy_main_only_envs: environments that deploy.yml only deploys from deploy_default_branch (it refuses otherwise)
+deploy_main_only_envs:
+  - prod
 
 # --- Nginx Proxy Manager, configured through its API by tasks/npm.yml (only when with_proxy) ------------------
 # Required in the inventory (no defaults): npm_certificate_domains (comma separated, e.g.

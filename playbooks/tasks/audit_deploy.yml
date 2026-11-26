@@ -1,19 +1,33 @@
 ---
-# Audit trail of a deploy: tells the Telegram chat that it finished, succeeded or failed. Included by deploy.yml
-# (last step of the block, and in its rescue). Needs `audit_status` (ok | failed) and, for a failure,
-# `audit_detail`. Skipped with deploy_telegram_notify=false and in --check runs.
+# Audit trail of a deploy: tells the Telegram chat that it finished, succeeded or failed, and which commit (linked
+# to GitHub) and branch went out. Included by deploy.yml (last step of the block, and in its rescue). Needs
+# `audit_status` (ok | failed) and, for a failure, `audit_detail`. The git facts come from tasks/git_state.yml
+# (missing if the deploy failed before it ran: the message just leaves them out). Skipped with
+# deploy_telegram_notify=false and in --check runs.
 - name: Work out how long the deploy took
   set_fact:
     audit_seconds: "{{ (now(utc=true).strftime('%s') | int) - (deploy_started | default(now(utc=true).strftime('%s')) | int) }}"
   run_once: true
   tags: always
 
+# Telegram's HTML mode: every dynamic value is escaped with `| e`. Each value is a single line (a folded scalar
+# turns more-indented lines into newlines).
+- name: Describe what was deployed
+  set_fact:
+    audit_commit_html: >-
+      {% if (deploy_git_commit | default('')) | length == 0 %}{% elif (deploy_git_url | default('')) | length > 0 %} <a href="{{ deploy_git_url }}/commit/{{ deploy_git_commit }}">{{ deploy_git_commit }}</a>{% else %} {{ deploy_git_commit | e }}{% endif %}
+    audit_branch_html: >-
+      {% if (deploy_git_branch | default('')) | length == 0 or deploy_git_branch == deploy_default_branch %}{% elif deploy_git_branch == 'HEAD' %} (🧪 detached HEAD){% else %} (🧪 branch {{ deploy_git_branch | e }}){% endif %}
+  run_once: true
+  tags: always
+
 - name: Tell Telegram how the deploy finished
   include_tasks: telegram_notify.yml
   vars:
-    telegram_text: >-
-      {{ '🚀 Deploy OK' if audit_status == 'ok' else '❌ Deploy FAILED' }} ({{ stack_env | default('?') }},
-      {{ inventory_hostname }}) after {{ audit_seconds }}s.
-      {{ ('Failed task: ' ~ audit_detail) if audit_status != 'ok' else ('https://' ~ nextcloud_domain) }}
+    telegram_parse_mode: HTML
+    audit_what: "Homelab{{ audit_commit_html }}{{ audit_branch_html }}"
+    audit_headline: "{{ ('🚀 ' ~ audit_what ~ ' deployed to ' ~ (stack_env | default('?') | e)) if audit_status == 'ok' else ('❌ ' ~ audit_what ~ ' deploy to ' ~ (stack_env | default('?') | e) ~ ' FAILED') }} after {{ audit_seconds }}s."
+    audit_tail: "{{ ('https://' ~ (nextcloud_domain | default('') | e)) if audit_status == 'ok' else ('Failed task: ' ~ (audit_detail | default('unknown') | e)) }}"
+    telegram_text: "{{ audit_headline }} {{ audit_tail }}"
   when: deploy_telegram_notify | bool
   tags: always
