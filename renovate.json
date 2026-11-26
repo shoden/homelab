@@ -13,16 +13,9 @@
   },
   "packageRules": [
     {
-      "description": "Majors (Nextcloud one at a time, MariaDB/Redis data migrations) are only proposed after approval from the Dependency Dashboard issue",
-      "matchUpdateTypes": [
-        "major"
-      ],
-      "dependencyDashboardApproval": true
-    },
-    {
-      "description": "Nextcloud supports upgrading one major version at a time: offer each major separately instead of jumping to the latest",
-      "matchPackageNames": [
-        "nextcloud"
+      "description": "Offer each major separately instead of jumping to the latest. Nextcloud supports upgrading one major version at a time",
+      "matchManagers": [
+        "docker-compose"
       ],
       "separateMultipleMajor": true
     },
