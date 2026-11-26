@@ -18,6 +18,8 @@
       {% if (deploy_git_commit | default('')) | length == 0 %}{% elif (deploy_git_url | default('')) | length > 0 %} <a href="{{ deploy_git_url }}/commit/{{ deploy_git_commit }}">{{ deploy_git_commit }}</a>{% else %} {{ deploy_git_commit | e }}{% endif %}
     audit_branch_html: >-
       {% if (deploy_git_branch | default('')) | length == 0 or deploy_git_branch == deploy_default_branch %}{% elif deploy_git_branch == 'HEAD' %} (🧪 detached HEAD){% else %} (🧪 branch {{ deploy_git_branch | e }}){% endif %}
+    audit_dirty_html: >-
+      {% if deploy_git_dirty | default(false) | bool %} (✏️ with uncommitted changes){% endif %}
   run_once: true
   tags: always
 
@@ -25,9 +27,9 @@
   include_tasks: telegram_notify.yml
   vars:
     telegram_parse_mode: HTML
-    audit_what: "Homelab{{ audit_commit_html }}{{ audit_branch_html }}"
+    audit_what: "Homelab{{ audit_commit_html }}{{ audit_branch_html }}{{ audit_dirty_html }}"
     audit_headline: "{{ ('🚀 ' ~ audit_what ~ ' deployed to ' ~ (stack_env | default('?') | e)) if audit_status == 'ok' else ('❌ ' ~ audit_what ~ ' deploy to ' ~ (stack_env | default('?') | e) ~ ' FAILED') }} after {{ audit_seconds }}s."
-    audit_tail: "{{ ('https://' ~ (nextcloud_domain | default('') | e)) if audit_status == 'ok' else ('Failed task: ' ~ (audit_detail | default('unknown') | e)) }}"
-    telegram_text: "{{ audit_headline }} {{ audit_tail }}"
+    audit_tail: "{{ '' if audit_status == 'ok' else (' Failed task: ' ~ (audit_detail | default('unknown') | e)) }}"
+    telegram_text: "{{ audit_headline }}{{ audit_tail }}"
   when: deploy_telegram_notify | bool
   tags: always

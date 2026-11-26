@@ -2,7 +2,8 @@
 # Which commit and branch of this repository is being deployed (read on the machine you deploy from). Included by
 # deploy.yml at the start of its block, for the "only main goes to prod" check and the audit message. Sets
 # deploy_git_commit (short hash), deploy_git_branch ("HEAD" when detached) and deploy_git_url (the GitHub
-# repository URL); each is empty when it cannot be read (not a git checkout, no remote, a remote not on GitHub).
+# repository URL), deploy_git_changes (staged and unstaged changes to tracked files, `git status --porcelain`;
+# untracked files do not count) and deploy_git_dirty; each is empty when it cannot be read (not a git checkout, no remote, a remote not on GitHub).
 - name: Read the git state of the repository being deployed
   command: "git {{ item }}"
   args:
@@ -11,6 +12,7 @@
     - rev-parse --short HEAD
     - rev-parse --abbrev-ref HEAD
     - remote get-url origin
+    - status --porcelain --untracked-files=no
   register: deploy_git_read
   changed_when: false
   failed_when: false
@@ -25,6 +27,8 @@
   set_fact:
     deploy_git_commit: "{{ deploy_git_read.results[0].stdout | default('') | trim }}"
     deploy_git_branch: "{{ deploy_git_read.results[1].stdout | default('') | trim }}"
+    deploy_git_changes: "{{ deploy_git_read.results[3].stdout | default('') | trim }}"
+    deploy_git_dirty: "{{ (deploy_git_read.results[3].rc | default(1)) == 0 and (deploy_git_read.results[3].stdout | default('') | trim | length) > 0 }}"
     deploy_git_url: >-
       {{ (deploy_git_read.results[2].stdout | default('') | trim)
       | regex_replace('^(git@|ssh://git@|https?://)github\.com[:/]', 'https://github.com/')

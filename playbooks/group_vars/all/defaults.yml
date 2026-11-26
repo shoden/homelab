@@ -124,6 +124,10 @@ deploy_default_branch: main
 # deploy_main_only_envs: environments that deploy.yml only deploys from deploy_default_branch (it refuses otherwise)
 deploy_main_only_envs:
   - prod
+# deploy_allow_dirty: deploy.yml refuses a git workspace with staged or unstaged changes (untracked files are fine);
+# -e deploy_allow_dirty=true lets it through for the other environments (to try a change on dev), never for the
+# deploy_main_only_envs ones. The audit message then says so.
+deploy_allow_dirty: false
 
 # --- Nginx Proxy Manager, configured through its API by tasks/npm.yml (only when with_proxy) ------------------
 # Required in the inventory (no defaults): npm_certificate_domains (comma separated, e.g.

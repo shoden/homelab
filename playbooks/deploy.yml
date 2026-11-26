@@ -40,6 +40,16 @@
           when: stack_env in deploy_main_only_envs
           tags: always
 
+        - name: Only a clean git workspace can be deployed
+          assert:
+            that: not (deploy_git_dirty | bool)
+            fail_msg: >-
+              The git workspace has staged or unstaged changes, so the commit hash in the audit would not describe
+              what is deployed. Commit or stash them (git status). Changes: {{ deploy_git_changes.splitlines() | join(', ') }}
+            quiet: true
+          when: not (deploy_allow_dirty | bool) or stack_env in deploy_main_only_envs
+          tags: always
+
         - name: Show the environment being deployed
           debug:
             msg: "Environment '{{ stack_env }}': stack {{ stack_name }} in {{ nextcloud_base_dir }}, domain {{ nextcloud_domain | default('(not set)') }}"
