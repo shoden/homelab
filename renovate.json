@@ -25,11 +25,22 @@
         "docker-compose"
       ],
       "matchUpdateTypes": [
+        "digest",
         "minor",
         "patch",
-        "digest"
+        "pin"
       ],
       "groupName": "container images"
+    },
+    {
+      "description": "Non-major updates are merged by Renovate once all checks pass",
+      "matchUpdateTypes": [
+        "digest",
+        "minor",
+        "patch",
+        "pin"
+      ],
+      "automerge": true
     }
   ]
 }
