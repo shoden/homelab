@@ -200,7 +200,7 @@ services:
   # Logs of every host (see the shippers below). Published on the LAN (logs_listen) for the other hosts' shippers;
   # Grafana queries it over the internal network. Both use TLS (logs_tls) and the basic auth below.
   victoria-logs:
-    image: victoriametrics/victoria-logs:v1.54.0
+    image: victoriametrics/victoria-logs:v1.55.0
     container_name: {{ container_logs }}
     restart: unless-stopped
     command:
