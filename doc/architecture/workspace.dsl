@@ -56,7 +56,7 @@ workspace "Homelab" "Self-hosted Nextcloud stack with monitoring and logging, de
 
         # --- Deployment tooling: the control machine -----------------------------------------------
         tooling = softwareSystem "Deployment tooling" "Ansible project that deploys and operates the stacks over SSH." {
-            runsh = container "run.sh" "Picks the playbook and environment (fzf), runs it inside `secretspec run`." "Bash"
+            runsh = container "run.sh" "Picks the playbook and environment (fzf), runs it inside `secretspec run`. release_branch: deploys a branch to dev, merges it into main, deploys prod." "Bash"
             playbooks = container "Ansible playbooks" "deploy, backup, restore, reboot, shutdown, maintenance_on/off, e2e. Flat project, no roles." "Ansible" {
                 checks = component "Preflight checks" "Asserts stack_env, domains, passwords (and their allowed characters) are set and not placeholders." "deploy.yml pre_tasks"
                 render = component "Config rendering" "env.j2, docker-compose.yml.j2, HSTS conf, vector/monitoring config; flags a restart only if a file changed." "Jinja2 templates"

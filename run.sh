@@ -2,6 +2,7 @@
 # Usage: ./run.sh [playbook] [environment] [ansible-playbook args...]
 #   ./run.sh deploy.yml prod          playbooks are found in playbooks/ ("deploy.yml", "deploy" or a path)
 #   ./run.sh deploy dev --check       the environment is a directory of inventory/ (prod, dev, ...)
+#   ./run.sh release_branch           release a branch: dev, merge into main, prod (see release_branch.sh)
 # Without a playbook (or when the first argument is an option, e.g. ./run.sh -e run_repair=true) you pick
 # one with fzf, if fzf and yq are installed. Without an environment you pick one the same way, unless
 # inventory/ has only one.
@@ -40,9 +41,11 @@ fi
 if [ $# -eq 0 ] || [[ "$1" == -* ]]; then
   require_picker "you need to pass a playbook. Available: $(available)" yq
   # one line per playbook: "<file without .yml> - <name of its first play>", e.g. "deploy - Deploy Nextcloud stack"
-  selected=$(for f in playbooks/*.yml; do
+  selected=$({ for f in playbooks/*.yml; do
       printf '%s|- %s\n' "$(basename "$f" .yml)" "$(yq -r '.[0].name' "$f")"
-    done | column -t -s '|' | fzf --prompt='playbook> ' --cycle --height=40% --reverse \
+    done
+    printf '%s|- %s\n' release_branch "Release a branch: dev, merge into main, push, prod"
+    } | column -t -s '|' | fzf --prompt='playbook> ' --cycle --height=40% --reverse \
       --header='Enter: run   Esc: cancel' || true)
   if [ -z "$selected" ]; then
     echo "No playbook selected." >&2
@@ -52,6 +55,11 @@ if [ $# -eq 0 ] || [[ "$1" == -* ]]; then
 else
   playbook="$1"
   shift
+fi
+
+# not a playbook: a workflow of several deploys, in its own script
+if [ "$playbook" = release_branch ]; then
+  exec ./release_branch.sh "$@"
 fi
 
 # playbooks live in playbooks/; accept "deploy.yml", "deploy" or a path

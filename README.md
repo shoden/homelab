@@ -20,6 +20,7 @@ All containers share the `nextcloud-network` bridge network. Nextcloud waits for
 ```
 ansible.cfg              Ansible settings
 run.sh                   runs a playbook on an environment: ./run.sh deploy.yml prod
+release_branch.sh        ./run.sh release_branch: dev, merge into main, prod
 playbooks/
   deploy.yml backup.yml restore.yml reboot.yml shutdown.yml maintenance_on.yml maintenance_off.yml
   templates/             env.j2, docker-compose.yml.j2, apache-hsts.conf.j2
@@ -138,6 +139,14 @@ git checkout my-branch          # for example the Renovate branch with a Nextclo
 git checkout main && git pull
 ./run.sh deploy.yml prod
 ```
+
+`./run.sh release_branch` does all of this in one go (it needs [fzf](https://github.com/junegunn/fzf), a terminal, a clean workspace, and the `dev` and `prod` environments):
+
+1. You pick a branch (local or on `origin`). `main` is updated from `origin` and the branch is checked out.
+2. If the branch is behind `main`, it is rebased onto it. On a conflict you choose to abort or to resolve it by hand and run the command again.
+3. It is deployed to dev, always running the end-to-end test.
+4. If that succeeded, `main` is fast-forwarded to the tested commit and pushed to `origin`, without further confirmation. The rebased branch itself is never pushed.
+5. `main` is deployed to prod (not if the push failed). If this deploy fails, retry it with `./run.sh deploy.yml prod`.
 
 Dev starts empty. To rehearse an **upgrade**, first deploy the version prod runs now (check out `main`, `deploy.yml dev`), put some data into dev, and then deploy the branch. Restoring a prod backup into dev is not supported yet: `restore.yml` refuses a backup made in another environment.
 

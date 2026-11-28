@@ -15,6 +15,7 @@ Homelab: a flat (no roles) Ansible project for self-hosted services. It deploys 
 ./run.sh reboot.yml      # stop the stack, reboot the host and wait for Nextcloud to be healthy (stack starts at boot via systemd)
 ./run.sh shutdown.yml    # stop the stack via systemd and power off the host
 ./run.sh maintenance_on.yml / maintenance_off.yml    # switch Nextcloud maintenance mode on / off (idempotent)
+./run.sh release_branch   # pick a branch (fzf), rebase on main, deploy to dev + e2e, ff-merge into main, push main, deploy to prod (release_branch.sh)
 ./run.sh e2e.yml dev      # run only the Playwright end-to-end test against a deployed environment (deploy.yml runs it as its last step; --skip-tags e2e skips it)
 ./run.sh deploy.yml dev --check --diff    # dry run
 ./renovate.sh --local     # dry run of Renovate in Docker: shows which image updates it would propose
