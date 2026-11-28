@@ -17,10 +17,11 @@
   set_fact:
     audit_summary_html: >-
       {%- if audit_status == 'ok' -%}
-      🚀 Homelab deployed to {{ stack_env | default('?') | e }}
+      🚀 Homelab deployed
       {%- else -%}
-      ❌ Homelab deploy to {{ stack_env | default('?') | e }} FAILED
+      ❌ Homelab deploy FAILED
       {%- endif -%}
+      {{ nl }}  🎯 Environment: {{ stack_env | default('?') | e }}
       {%- if deploy_git_commit | default('') | length > 0 -%}
       {{ nl }}  🏷️ Version: {% if deploy_git_url | default('') | length > 0 %}<a href="{{ deploy_git_url }}/commit/{{ deploy_git_commit }}">{{ deploy_git_commit }}</a>{% else %}{{ deploy_git_commit | e }}{% endif %}
       {%- endif -%}
@@ -30,7 +31,7 @@
       {%- if deploy_git_dirty | default(false) | bool -%}
       {{ nl }}  ✏️ With uncommitted changes
       {%- endif -%}
-      {{ nl }}  ⏲️ Duration: {{ audit_seconds }}s
+      {{ nl }}  ⌚ Duration: {{ audit_seconds }}s
       {%- if audit_status != 'ok' -%}
       {{ nl }}  💥 Failed task: {{ audit_detail | default('unknown') | e }}
       {%- endif -%}
