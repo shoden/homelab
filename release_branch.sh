@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Usage: ./run.sh release_branch
 # Releases a branch: pick it (fzf), rebase it onto main if it is behind, deploy it to dev with the end-to-end test,
-# fast-forward main to it, push main to origin and deploy it to prod. It stops at the first thing that fails.
+# update the branch on origin with what was tested (so GitHub marks its pull request as merged), fast-forward main
+# to it, push main and deploy it to prod. It stops at the first thing that fails.
 # Everything is inside functions and the last line exits: this script switches branches, which can rewrite this
 # very file while bash is still reading it.
 set -euo pipefail
@@ -48,7 +49,7 @@ update_from_origin() {
       [ "$branch" != "$main_branch" ] || die "$main_branch and origin/$main_branch have diverged. Sort that out first."
       echo "origin/$branch has commits that are not in your local $branch:"
       git --no-pager log --oneline --cherry-pick --right-only "HEAD...$remote"
-      confirm "Release the LOCAL branch, without them?" || die "stopped. Update $branch and run again."
+      confirm "Release the LOCAL branch? Those commits will be REMOVED from origin/$branch." || die "stopped. Update $branch and run again."
     fi
   fi
 }
@@ -101,6 +102,11 @@ release() {
   else
     git switch --create "$branch" --track "origin/$branch"
   fi
+  # where the branch is on origin now: it is only overwritten later if it is still there
+  local lease=""
+  if has_ref "refs/remotes/origin/$branch"; then
+    lease=$(git rev-parse "refs/remotes/origin/$branch")
+  fi
   update_from_origin "$branch"
   rebase_on_main "$branch"
 
@@ -123,6 +129,14 @@ release() {
   if has_ref "refs/remotes/origin/$main_branch"; then
     git merge-base --is-ancestor "origin/$main_branch" "$tested" ||
       die "origin/$main_branch got new commits during the dev deploy. Run again to test them with $branch."
+  fi
+
+  # before main: GitHub marks a pull request as merged when its head commit reaches main, and after a rebase
+  # that has to be the rebased one. The lease is explicit because the fetch above moved origin/<branch>.
+  if [ -n "$lease" ] && [ "$lease" != "$tested" ]; then
+    step "Updating origin/$branch with the tested commits"
+    git push --force-with-lease="refs/heads/$branch:$lease" origin "$tested:refs/heads/$branch" ||
+      die "origin/$branch was not updated (did it change during the dev deploy?). $main_branch and prod are untouched. Run again."
   fi
 
   step "Merging $branch into $main_branch"

@@ -145,7 +145,7 @@ git checkout main && git pull
 1. You pick a branch (local or on `origin`). `main` is updated from `origin` and the branch is checked out.
 2. If the branch is behind `main`, it is rebased onto it. On a conflict you choose to abort or to resolve it by hand and run the command again.
 3. It is deployed to dev, always running the end-to-end test.
-4. If that succeeded, `main` is fast-forwarded to the tested commit and pushed to `origin`, without further confirmation. The rebased branch itself is never pushed.
+4. If that succeeded, and the branch is on `origin`, it is updated there with the tested commits (a forced push if it was rebased), so that GitHub marks its pull request as merged. The push is refused, and the release stops, if the branch changed on `origin` in the meantime. Then `main` is fast-forwarded to the same commit and pushed, all without further confirmation. A branch that only exists locally is not pushed.
 5. `main` is deployed to prod (not if the push failed). If this deploy fails, retry it with `./run.sh deploy.yml prod`.
 
 Dev starts empty. To rehearse an **upgrade**, first deploy the version prod runs now (check out `main`, `deploy.yml dev`), put some data into dev, and then deploy the branch. Restoring a prod backup into dev is not supported yet: `restore.yml` refuses a backup made in another environment.
