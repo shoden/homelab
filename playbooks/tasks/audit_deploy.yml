@@ -11,16 +11,31 @@
   run_once: true
   tags: always
 
-# Telegram's HTML mode: every dynamic value is escaped with `| e`. Each value is a single line (a folded scalar
-# turns more-indented lines into newlines).
-- name: Describe what was deployed
+# The message: a headline and one indented line per fact (the branch only when it is not deploy_default_branch).
+# Telegram's HTML mode: every dynamic value is escaped with `| e`.
+- name: Describe how the deploy finished
   set_fact:
-    audit_commit_html: >-
-      {% if (deploy_git_commit | default('')) | length == 0 %}{% elif (deploy_git_url | default('')) | length > 0 %} <a href="{{ deploy_git_url }}/commit/{{ deploy_git_commit }}">{{ deploy_git_commit }}</a>{% else %} {{ deploy_git_commit | e }}{% endif %}
-    audit_branch_html: >-
-      {% if (deploy_git_branch | default('')) | length == 0 or deploy_git_branch == deploy_default_branch %}{% elif deploy_git_branch == 'HEAD' %} (🧪 detached HEAD){% else %} (🧪 branch {{ deploy_git_branch | e }}){% endif %}
-    audit_dirty_html: >-
-      {% if deploy_git_dirty | default(false) | bool %} (✏️ with uncommitted changes){% endif %}
+    audit_summary_html: >-
+      {%- if audit_status == 'ok' -%}
+      🚀 Homelab deployed to {{ stack_env | default('?') | e }}
+      {%- else -%}
+      ❌ Homelab deploy to {{ stack_env | default('?') | e }} FAILED
+      {%- endif -%}
+      {%- if deploy_git_commit | default('') | length > 0 -%}
+      {{ nl }}  🏷️ Version: {% if deploy_git_url | default('') | length > 0 %}<a href="{{ deploy_git_url }}/commit/{{ deploy_git_commit }}">{{ deploy_git_commit }}</a>{% else %}{{ deploy_git_commit | e }}{% endif %}
+      {%- endif -%}
+      {%- if deploy_git_branch | default('') | length > 0 and deploy_git_branch != deploy_default_branch -%}
+      {{ nl }}  🧪 Branch: {{ 'detached HEAD' if deploy_git_branch == 'HEAD' else deploy_git_branch | e }}
+      {%- endif -%}
+      {%- if deploy_git_dirty | default(false) | bool -%}
+      {{ nl }}  ✏️ With uncommitted changes
+      {%- endif -%}
+      {{ nl }}  ⏲️ Duration: {{ audit_seconds }}s
+      {%- if audit_status != 'ok' -%}
+      {{ nl }}  💥 Failed task: {{ audit_detail | default('unknown') | e }}
+      {%- endif -%}
+  vars:
+    nl: "\n"
   run_once: true
   tags: always
 
@@ -61,9 +76,6 @@
   include_tasks: telegram_notify.yml
   vars:
     telegram_parse_mode: HTML
-    audit_what: "Homelab{{ audit_commit_html }}{{ audit_branch_html }}{{ audit_dirty_html }}"
-    audit_headline: "{{ ('🚀 ' ~ audit_what ~ ' deployed to ' ~ (stack_env | default('?') | e)) if audit_status == 'ok' else ('❌ ' ~ audit_what ~ ' deploy to ' ~ (stack_env | default('?') | e) ~ ' FAILED') }} after {{ audit_seconds }}s."
-    audit_tail: "{{ '' if audit_status == 'ok' else (' Failed task: ' ~ (audit_detail | default('unknown') | e)) }}"
-    telegram_text: "{{ audit_headline }}{{ audit_tail }}{{ audit_commits_html }}"
+    telegram_text: "{{ audit_summary_html }}{{ audit_commits_html }}"
   when: deploy_telegram_notify | bool
   tags: always
