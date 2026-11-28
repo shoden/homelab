@@ -128,6 +128,10 @@ deploy_main_only_envs:
 # -e deploy_allow_dirty=true lets it through for the other environments (to try a change on dev), never for the
 # deploy_main_only_envs ones. The audit message then says so.
 deploy_allow_dirty: false
+# deploy_commit_file: on the host, the commit of the last successful deploy (the audit lists what is new since then)
+deploy_commit_file: "{{ nextcloud_base_dir }}/deployed-commit"
+# deploy_audit_max_commits: commits listed in the Telegram message before "and N more" (a message holds 4096 characters)
+deploy_audit_max_commits: 20
 
 # --- Nginx Proxy Manager, configured through its API by tasks/npm.yml (only when with_proxy) ------------------
 # Required in the inventory (no defaults): npm_certificate_domains (comma separated, e.g.

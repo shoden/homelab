@@ -1,0 +1,44 @@
+---
+# Which commits does this deploy bring to the host? The host keeps the commit of its last successful deploy in
+# deploy_commit_file (written by the end of deploy.yml); the list is worked out from it in the git checkout of the
+# machine you deploy from. Included by deploy.yml after git_state.yml and before anything changes on the host
+# (clean_install deletes the file). Sets deploy_previous_commit (empty when there is no record),
+# deploy_new_commits and deploy_removed_commits (lines "<short hash><TAB><subject>", newest first) and
+# deploy_commits_known (false when either git log failed: no record, or a commit this checkout does not have).
+- name: Read the commit of the last successful deploy from the host
+  slurp:
+    src: "{{ deploy_commit_file }}"
+  register: deploy_previous_read
+  failed_when: false
+  tags: always
+
+# only a full hash is accepted: the value comes from the host and ends up in a git command line
+- name: Remember the previously deployed commit
+  set_fact:
+    deploy_previous_commit: >-
+      {{ (deploy_previous_read.content | default('') | b64decode | trim)
+      if (deploy_previous_read.content | default('') | b64decode | trim) is match('^[0-9a-f]{40,64}$') else '' }}
+  tags: always
+
+- name: List the commits that are new on the host, and the ones that go away
+  command:
+    argv: [git, log, "--format=%h%x09%s", "{{ item }}", "--"]
+    chdir: "{{ playbook_dir }}"
+  loop:
+    - "{{ deploy_previous_commit }}..HEAD"
+    - "HEAD..{{ deploy_previous_commit }}"
+  register: deploy_log_read
+  changed_when: false
+  failed_when: false
+  check_mode: false
+  delegate_to: localhost
+  become: false
+  when: deploy_previous_commit | length > 0
+  tags: always
+
+- name: Remember the list of commits
+  set_fact:
+    deploy_commits_known: "{{ deploy_previous_commit | length > 0 and deploy_log_read.results | map(attribute='rc') | list == [0, 0] }}"
+    deploy_new_commits: "{{ (deploy_log_read.results | default([{}]))[0].stdout_lines | default([]) }}"
+    deploy_removed_commits: "{{ (deploy_log_read.results | default([{}, {}]))[1].stdout_lines | default([]) }}"
+  tags: always

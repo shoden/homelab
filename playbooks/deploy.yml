@@ -20,6 +20,10 @@
           include_tasks: tasks/git_state.yml
           tags: always
 
+        - name: Work out which commits are new on the host
+          include_tasks: tasks/deploy_commits.yml
+          tags: always
+
         - name: Check the environment
           assert:
             that:
@@ -473,6 +477,17 @@
               - ""
               - "To run occ commands, use: {{ occ_helper | basename }} <command>"
               - "Example: {{ occ_helper | basename }} maintenance:mode --on"
+
+        # after everything that can fail, so a failed deploy keeps the old record and the next one lists its commits
+        # again. Not tagged "always": a partial run (--tags e2e) must not move the record.
+        - name: Record the deployed commit on the host
+          copy:
+            dest: "{{ deploy_commit_file }}"
+            content: "{{ deploy_git_full_commit }}\n"
+            owner: root
+            group: root
+            mode: "0644"
+          when: deploy_git_full_commit | default('') | length > 0
 
         - name: Audit the finished deploy
           include_tasks: tasks/audit_deploy.yml

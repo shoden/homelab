@@ -205,6 +205,8 @@ The playbook is idempotent. A rerun with no changes causes no downtime and repor
 
 The HSTS header comes from `apache-hsts.conf`, which is mounted read-only into the container's `conf-enabled/`. It stays active when the container is recreated.
 
+When it finishes, successfully or not, it sends a Telegram message (if the `TELEGRAM_*` secrets are set). The message lists the commits that are new on that host since its last successful deploy, which the host records in `/opt/nextcloud/deployed-commit`. At most `deploy_audit_max_commits` (20) are listed. The first deploy with this feature, and the first after `clean_install`, have no record to compare with. A failed deploy does not update it, so the next one lists those commits again; `restore.yml` does not update it either.
+
 ## HTTPS / Nginx Proxy Manager
 
 Each application is served on its own subdomain, over HTTPS only. Nginx Proxy Manager (NPM) terminates TLS and forwards to the containers over the internal `nextcloud-network`. `deploy.yml` sets up the certificate and the proxy hosts for you through NPM's API (see below); you only create the DNS records and the OVH API credentials.

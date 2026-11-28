@@ -2,7 +2,8 @@
 # Audit trail of a deploy: tells the Telegram chat that it finished, succeeded or failed, and which commit (linked
 # to GitHub) and branch went out. Included by deploy.yml (last step of the block, and in its rescue). Needs
 # `audit_status` (ok | failed) and, for a failure, `audit_detail`. The git facts come from tasks/git_state.yml
-# (missing if the deploy failed before it ran: the message just leaves them out). Skipped with
+# (missing if the deploy failed before it ran: the message just leaves them out), the list of commits from
+# tasks/deploy_commits.yml. Skipped with
 # deploy_telegram_notify=false and in --check runs.
 - name: Work out how long the deploy took
   set_fact:
@@ -23,6 +24,39 @@
   run_once: true
   tags: always
 
+# The commits since the last successful deploy of this host (tasks/deploy_commits.yml). Nothing is added if the
+# deploy failed before they were worked out.
+- name: Describe the commits of this deploy
+  set_fact:
+    audit_commits_html: >-
+      {%- if deploy_commits_known is not defined -%}
+      {%- elif deploy_previous_commit | length == 0 -%}
+      {{ nl }}{{ nl }}No record of a previous deploy on this host.
+      {%- elif not deploy_commits_known -%}
+      {{ nl }}{{ nl }}Cannot list the commits: the previously deployed {{ deploy_previous_commit[:7] }} is not in this checkout.
+      {%- else -%}
+      {%- if deploy_new_commits | length == 0 -%}
+      {{ nl }}{{ nl }}No new commits since the last deploy.
+      {%- else -%}
+      {{ nl }}{{ nl }}New commits ({{ deploy_new_commits | length }}):
+      {%- for line in deploy_new_commits[:deploy_audit_max_commits | int] -%}
+      {%- set parts = line.split('\t', 1) -%}
+      {%- set hash = parts[0] -%}
+      {{ nl }}• {% if deploy_git_url | default('') | length > 0 %}<a href="{{ deploy_git_url }}/commit/{{ hash }}">{{ hash }}</a>{% else %}{{ hash }}{% endif %} {{ parts[1] | default('') | truncate(100) | e }}
+      {%- endfor -%}
+      {%- if deploy_new_commits | length > deploy_audit_max_commits | int -%}
+      {{ nl }}…and {{ deploy_new_commits | length - deploy_audit_max_commits | int }} more.
+      {%- endif -%}
+      {%- endif -%}
+      {%- if deploy_removed_commits | length > 0 -%}
+      {{ nl }}⏪ {{ deploy_removed_commits | length }} previously deployed commit(s) are not in this one.
+      {%- endif -%}
+      {%- endif -%}
+  vars:
+    nl: "\n"
+  run_once: true
+  tags: always
+
 - name: Tell Telegram how the deploy finished
   include_tasks: telegram_notify.yml
   vars:
@@ -30,6 +64,6 @@
     audit_what: "Homelab{{ audit_commit_html }}{{ audit_branch_html }}{{ audit_dirty_html }}"
     audit_headline: "{{ ('🚀 ' ~ audit_what ~ ' deployed to ' ~ (stack_env | default('?') | e)) if audit_status == 'ok' else ('❌ ' ~ audit_what ~ ' deploy to ' ~ (stack_env | default('?') | e) ~ ' FAILED') }} after {{ audit_seconds }}s."
     audit_tail: "{{ '' if audit_status == 'ok' else (' Failed task: ' ~ (audit_detail | default('unknown') | e)) }}"
-    telegram_text: "{{ audit_headline }}{{ audit_tail }}"
+    telegram_text: "{{ audit_headline }}{{ audit_tail }}{{ audit_commits_html }}"
   when: deploy_telegram_notify | bool
   tags: always

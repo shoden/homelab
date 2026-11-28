@@ -64,7 +64,7 @@ workspace "Homelab" "Self-hosted Nextcloud stack with monitoring and logging, de
                 npmTasks = component "Proxy and certificate" "Idempotently creates the Let's Encrypt certificate and proxy hosts through NPM's REST API." "npm.yml, npm_proxy_host.yml"
                 settings = component "Nextcloud settings" "config:system read-then-write, test account, optional repair and index jobs." "occ, repair_nextcloud.yml"
                 e2e = component "End-to-end test" "Playwright (Chromium): log in, upload, check over WebDAV, delete. Runs only if something relevant changed." "e2e.yml"
-                audit = component "Deploy audit" "Sends deploy OK / FAILED (commit linked to GitHub, branch if not main, failed task) to Telegram. Only main can be deployed to prod." "audit_deploy.yml, telegram_notify.yml"
+                audit = component "Deploy audit" "Keeps the deployed commit on the host. Sends deploy OK / FAILED (commit linked to GitHub, branch if not main, new commits, failed task) to Telegram. Only main can be deployed to prod." "audit_deploy.yml, telegram_notify.yml"
             }
             e2eTests = container "Playwright project" "Browser test of the deployed environment (e2e/)." "Playwright, Chromium"
             logsTls = container "Logs certificate" "Self-signed certificate for VictoriaLogs, created in certs/ and copied to the hub and each shipper." "OpenSSL" "Optional"

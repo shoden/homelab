@@ -15,7 +15,7 @@ graph LR
     subgraph 35 ["Deployment tooling"]
       style 35 fill:#ffffff,stroke:#1e4b7b,color:#1e4b7b
 
-      36["<div style='font-weight: bold'>run.sh</div><div style='font-size: 70%; margin-top: 0px'>[Container: Bash]</div><div style='font-size: 80%; margin-top:10px'>Picks the playbook and<br />environment (fzf), runs it<br />inside `secretspec run`.</div>"]
+      36["<div style='font-weight: bold'>run.sh</div><div style='font-size: 70%; margin-top: 0px'>[Container: Bash]</div><div style='font-size: 80%; margin-top:10px'>Picks the playbook and<br />environment (fzf), runs it<br />inside `secretspec run`.<br />release_branch: deploys a<br />branch to dev, merges it into<br />main, deploys prod.</div>"]
       style 36 fill:#3f84c6,stroke:#2c5c8a,color:#ffffff
       37["<div style='font-weight: bold'>Ansible playbooks</div><div style='font-size: 70%; margin-top: 0px'>[Container: Ansible]</div><div style='font-size: 80%; margin-top:10px'>deploy, backup, restore,<br />reboot, shutdown,<br />maintenance_on/off, e2e. Flat<br />project, no roles.</div>"]
       style 37 fill:#3f84c6,stroke:#2c5c8a,color:#ffffff
@@ -72,7 +72,7 @@ graph TB
         style 42 fill:#7fb2e5,stroke:#587ca0,color:#0b2239
         43["<div style='font-weight: bold'>End-to-end test</div><div style='font-size: 70%; margin-top: 0px'>[Component: e2e.yml]</div><div style='font-size: 80%; margin-top:10px'>Playwright (Chromium): log<br />in, upload, check over<br />WebDAV, delete. Runs only if<br />something relevant changed.</div>"]
         style 43 fill:#7fb2e5,stroke:#587ca0,color:#0b2239
-        44["<div style='font-weight: bold'>Deploy audit</div><div style='font-size: 70%; margin-top: 0px'>[Component: audit_deploy.yml, telegram_notify.yml]</div><div style='font-size: 80%; margin-top:10px'>Sends deploy OK / FAILED<br />(commit linked to GitHub,<br />branch if not main, failed<br />task) to Telegram. Only main<br />can be deployed to prod.</div>"]
+        44["<div style='font-weight: bold'>Deploy audit</div><div style='font-size: 70%; margin-top: 0px'>[Component: audit_deploy.yml, telegram_notify.yml]</div><div style='font-size: 80%; margin-top:10px'>Keeps the deployed commit on<br />the host. Sends deploy OK /<br />FAILED (commit linked to<br />GitHub, branch if not main,<br />new commits, failed task) to<br />Telegram. Only main can be<br />deployed to prod.</div>"]
         style 44 fill:#7fb2e5,stroke:#587ca0,color:#0b2239
       end
 
@@ -228,7 +228,7 @@ graph LR
     subgraph 35 ["Deployment tooling"]
       style 35 fill:#ffffff,stroke:#1e4b7b,color:#1e4b7b
 
-      36["<div style='font-weight: bold'>run.sh</div><div style='font-size: 70%; margin-top: 0px'>[Container: Bash]</div><div style='font-size: 80%; margin-top:10px'>Picks the playbook and<br />environment (fzf), runs it<br />inside `secretspec run`.</div>"]
+      36["<div style='font-weight: bold'>run.sh</div><div style='font-size: 70%; margin-top: 0px'>[Container: Bash]</div><div style='font-size: 80%; margin-top:10px'>Picks the playbook and<br />environment (fzf), runs it<br />inside `secretspec run`.<br />release_branch: deploys a<br />branch to dev, merges it into<br />main, deploys prod.</div>"]
       style 36 fill:#3f84c6,stroke:#2c5c8a,color:#ffffff
       37["<div style='font-weight: bold'>Ansible playbooks</div><div style='font-size: 70%; margin-top: 0px'>[Container: Ansible]</div><div style='font-size: 80%; margin-top:10px'>deploy, backup, restore,<br />reboot, shutdown,<br />maintenance_on/off, e2e. Flat<br />project, no roles.</div>"]
       style 37 fill:#3f84c6,stroke:#2c5c8a,color:#ffffff

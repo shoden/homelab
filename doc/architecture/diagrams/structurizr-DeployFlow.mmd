@@ -22,7 +22,7 @@ graph TB
         style 42 fill:#7fb2e5,stroke:#587ca0,color:#0b2239
         43["<div style='font-weight: bold'>End-to-end test</div><div style='font-size: 70%; margin-top: 0px'>[Component: e2e.yml]</div><div style='font-size: 80%; margin-top:10px'>Playwright (Chromium): log<br />in, upload, check over<br />WebDAV, delete. Runs only if<br />something relevant changed.</div>"]
         style 43 fill:#7fb2e5,stroke:#587ca0,color:#0b2239
-        44["<div style='font-weight: bold'>Deploy audit</div><div style='font-size: 70%; margin-top: 0px'>[Component: audit_deploy.yml, telegram_notify.yml]</div><div style='font-size: 80%; margin-top:10px'>Sends deploy OK / FAILED<br />(commit linked to GitHub,<br />branch if not main, failed<br />task) to Telegram. Only main<br />can be deployed to prod.</div>"]
+        44["<div style='font-weight: bold'>Deploy audit</div><div style='font-size: 70%; margin-top: 0px'>[Component: audit_deploy.yml, telegram_notify.yml]</div><div style='font-size: 80%; margin-top:10px'>Keeps the deployed commit on<br />the host. Sends deploy OK /<br />FAILED (commit linked to<br />GitHub, branch if not main,<br />new commits, failed task) to<br />Telegram. Only main can be<br />deployed to prod.</div>"]
         style 44 fill:#7fb2e5,stroke:#587ca0,color:#0b2239
       end
 
